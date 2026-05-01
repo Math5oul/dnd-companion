@@ -24,6 +24,10 @@ export interface Character {
   maxHp: number;
   spellSlots: SpellSlots;
   spells: string[]; // spell ids conhecidos/preparados
+  /** IDs de traits/features escolhidas (automáticas e de escolha) */
+  traits: string[];
+  /** Pontos de Feitiçaria (Sorcerer) */
+  sorceryPoints?: { total: number; used: number };
   createdAt: string;
   updatedAt: string;
 }

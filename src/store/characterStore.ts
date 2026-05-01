@@ -41,7 +41,13 @@ interface CharacterStore {
   recoverSpellSlots: (characterId: string) => Promise<void>;
   updateHp: (characterId: string, hp: number) => Promise<void>;
   toggleSpell: (characterId: string, spellId: string) => Promise<void>;
-  levelUp: (characterId: string) => Promise<void>;
+  levelUp: (characterId: string, newTraits: string[]) => Promise<void>;
+  useSorceryPoint: (characterId: string) => Promise<void>;
+  recoverSorceryPoints: (characterId: string) => Promise<void>;
+  /** Converte um spell slot em pontos de feitiçaria (slot nivel N → +N pontos) */
+  convertSlotToPoints: (characterId: string, slotLevel: number) => Promise<void>;
+  /** Cria um spell slot gastando pontos de feitiçaria */
+  convertPointsToSlot: (characterId: string, slotLevel: number) => Promise<void>;
 
   // CRUD
   fetchCharacters: () => Promise<void>;
@@ -126,6 +132,10 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       hp: maxHp,
       maxHp,
       spellSlots,
+      // Pontos de Feitiçaria: sorcerer nível ≥ 2 começa com pontos = nível
+      ...(draft.className === 'sorcerer' && draft.level >= 2
+        ? { sorceryPoints: { total: draft.level, used: 0 } }
+        : {}),
     };
 
     const { data, error } = await supabase
@@ -211,7 +221,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     }));
   },
 
-  levelUp: async (characterId) => {
+  levelUp: async (characterId, newTraits) => {
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
     const newLevel = char.level + 1;
@@ -239,12 +249,115 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const newMaxHp = char.maxHp + hpGain;
     const newHp = char.hp + hpGain;
 
-    const patch = { level: newLevel, maxHp: newMaxHp, hp: newHp, spellSlots };
+    // Acumula traits existentes com os novos
+    const existingTraits = char.traits ?? [];
+    const mergedTraits = Array.from(new Set([...existingTraits, ...newTraits]));
+
+    // Pontos de Feitiçaria: atualiza total no level up (sorcerer nível ≥ 2 = total igual ao nível)
+    let sorceryPoints = char.sorceryPoints;
+    if (char.className === 'sorcerer') {
+      const newTotal = newLevel >= 2 ? newLevel : 0;
+      const usedSoFar = sorceryPoints?.used ?? 0;
+      sorceryPoints = newTotal > 0
+        ? { total: newTotal, used: Math.min(usedSoFar, newTotal) }
+        : undefined;
+    }
+
+    const patch = { level: newLevel, maxHp: newMaxHp, hp: newHp, spellSlots, traits: mergedTraits,
+      ...(sorceryPoints !== undefined ? { sorceryPoints } : {}) };
     const { error } = await supabase.from('characters').update(patch).eq('id', characterId);
     if (error) { console.error('Erro ao level up:', error.message); return; }
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, ...patch } : c
+      ),
+    }));
+  },
+
+  useSorceryPoint: async (characterId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char?.sorceryPoints) return;
+    const { total, used } = char.sorceryPoints;
+    if (used >= total) return;
+    const updated = { total, used: used + 1 };
+    await supabase.from('characters').update({ sorceryPoints: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, sorceryPoints: updated } : c
+      ),
+    }));
+  },
+
+  recoverSorceryPoints: async (characterId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char?.sorceryPoints) return;
+    const recovered = { total: char.sorceryPoints.total, used: 0 };
+    await supabase.from('characters').update({ sorceryPoints: recovered }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, sorceryPoints: recovered } : c
+      ),
+    }));
+  },
+
+  // Slot → Pontos: converte 1 slot usado/disponível em pontos (N pontos = nível do slot)
+  convertSlotToPoints: async (characterId, slotLevel) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char?.sorceryPoints) return;
+    const slot = char.spellSlots[slotLevel];
+    if (!slot) return;
+    const available = slot.total - slot.used;
+    if (available <= 0) return; // sem slots disponíveis desse nível
+
+    const { total, used: spUsed } = char.sorceryPoints;
+    const gain = slotLevel; // N pontos = nível do slot
+    const newSpUsed = Math.max(0, spUsed - gain); // "recupera" pontos reduzindo used
+
+    // Consome o slot
+    const newSlots = {
+      ...char.spellSlots,
+      [slotLevel]: { ...slot, used: slot.used + 1 },
+    };
+    const newSorcery = { total, used: newSpUsed };
+
+    await supabase.from('characters').update({ spellSlots: newSlots, sorceryPoints: newSorcery }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, spellSlots: newSlots, sorceryPoints: newSorcery } : c
+      ),
+    }));
+  },
+
+  // Pontos → Slot: cria 1 slot gastando pontos de feitiçaria
+  // Custo: 1°=2pts, 2°=3pts, 3°=5pts, 4°=6pts, 5°=7pts
+  convertPointsToSlot: async (characterId, slotLevel) => {
+    const COST: Record<number, number> = { 1: 2, 2: 3, 3: 5, 4: 6, 5: 7 };
+    const cost = COST[slotLevel];
+    if (!cost) return;
+
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char?.sorceryPoints) return;
+
+    const { total, used: spUsed } = char.sorceryPoints;
+    const available = total - spUsed;
+    if (available < cost) return; // pontos insuficientes
+
+    // Gasta os pontos
+    const newSorcery = { total, used: spUsed + cost };
+
+    // Recupera (ou cria) 1 slot desse nível
+    const existingSlot = char.spellSlots[slotLevel];
+    const newSlots = {
+      ...char.spellSlots,
+      [slotLevel]: existingSlot
+        ? { ...existingSlot, used: Math.max(0, existingSlot.used - 1) }
+        : { total: 1, used: 0 },
+    };
+
+    await supabase.from('characters').update({ spellSlots: newSlots, sorceryPoints: newSorcery }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, spellSlots: newSlots, sorceryPoints: newSorcery } : c
       ),
     }));
   },

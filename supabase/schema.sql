@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS characters (
   "maxHp"       INTEGER NOT NULL DEFAULT 8,
   "spellSlots"  JSONB NOT NULL DEFAULT '{}',
   "spells"      JSONB NOT NULL DEFAULT '[]',
+  "traits"         JSONB NOT NULL DEFAULT '[]',
+  "sorceryPoints"  JSONB,
   "createdAt"   TIMESTAMPTZ DEFAULT NOW(),
   "updatedAt"   TIMESTAMPTZ DEFAULT NOW()
 );
