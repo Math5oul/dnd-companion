@@ -2,11 +2,14 @@ export interface DnDClass {
   id: string;
   name: string;
   description: string;
+  descriptionEn?: string;
   hitDie: number;
   primaryAbility: string;
+  primaryAbilityEn?: string;
   savingThrows: string[];
+  savingThrowsEn?: string[];
   spellcaster: boolean;
-  spellSlotsByLevel?: Record<number, number[]>; // level -> [slots per spell level]
+  spellSlotsByLevel?: Record<number, number[]>;
   /** Número de truques (cantrips) conhecidos por nível (índice 0 = nível 1) */
   knownCantrips?: number[];
   /** Número de magias conhecidas/preparadas por nível (índice 0 = nível 1) */
@@ -18,18 +21,24 @@ export const CLASSES: DnDClass[] = [
     id: 'barbarian',
     name: 'Bárbaro',
     description: 'Guerreiro feroz que entra em frenesi de batalha alimentado por uma raiva primitiva.',
+    descriptionEn: 'Fierce warrior who enters a battle frenzy fueled by primal rage.',
     hitDie: 12,
     primaryAbility: 'Força',
+    primaryAbilityEn: 'Strength',
     savingThrows: ['Força', 'Constituição'],
+    savingThrowsEn: ['Strength', 'Constitution'],
     spellcaster: false,
   },
   {
     id: 'bard',
     name: 'Bardo',
     description: 'Artista mágico que usa música e magia para inspirar aliados e frustrar inimigos.',
+    descriptionEn: 'Magical entertainer who uses music and magic to inspire allies and frustrate enemies.',
     hitDie: 8,
     primaryAbility: 'Carisma',
+    primaryAbilityEn: 'Charisma',
     savingThrows: ['Destreza', 'Carisma'],
+    savingThrowsEn: ['Dexterity', 'Charisma'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -45,9 +54,12 @@ export const CLASSES: DnDClass[] = [
     id: 'cleric',
     name: 'Clérigo',
     description: 'Servo divino que empunha o poder de seu deus para curar aliados e punir inimigos.',
+    descriptionEn: 'Divine servant who wields the power of their god to heal allies and punish enemies.',
     hitDie: 8,
     primaryAbility: 'Sabedoria',
+    primaryAbilityEn: 'Wisdom',
     savingThrows: ['Sabedoria', 'Carisma'],
+    savingThrowsEn: ['Wisdom', 'Charisma'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -63,9 +75,12 @@ export const CLASSES: DnDClass[] = [
     id: 'druid',
     name: 'Druida',
     description: 'Guardião da natureza com o poder de transformar-se em animais e conjurar magias da natureza.',
+    descriptionEn: 'Guardian of nature with the power to transform into animals and cast nature spells.',
     hitDie: 8,
     primaryAbility: 'Sabedoria',
+    primaryAbilityEn: 'Wisdom',
     savingThrows: ['Inteligência', 'Sabedoria'],
+    savingThrowsEn: ['Intelligence', 'Wisdom'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -81,27 +96,36 @@ export const CLASSES: DnDClass[] = [
     id: 'fighter',
     name: 'Guerreiro',
     description: 'Mestre do combate com acesso ao maior número de estilos de luta e equipamentos.',
+    descriptionEn: 'Combat master with access to the widest range of fighting styles and equipment.',
     hitDie: 10,
     primaryAbility: 'Força ou Destreza',
+    primaryAbilityEn: 'Strength or Dexterity',
     savingThrows: ['Força', 'Constituição'],
+    savingThrowsEn: ['Strength', 'Constitution'],
     spellcaster: false,
   },
   {
     id: 'monk',
     name: 'Monge',
     description: 'Artista marcial que canaliza ki para realizar feitos sobre-humanos.',
+    descriptionEn: 'Martial artist who channels ki to achieve superhuman feats.',
     hitDie: 8,
     primaryAbility: 'Destreza e Sabedoria',
+    primaryAbilityEn: 'Dexterity and Wisdom',
     savingThrows: ['Força', 'Destreza'],
+    savingThrowsEn: ['Strength', 'Dexterity'],
     spellcaster: false,
   },
   {
     id: 'paladin',
     name: 'Paladino',
     description: 'Guerreiro sagrado que combina habilidade marcial com magia divina.',
+    descriptionEn: 'Holy warrior combining martial prowess with divine magic.',
     hitDie: 10,
     primaryAbility: 'Força e Carisma',
+    primaryAbilityEn: 'Strength and Charisma',
     savingThrows: ['Sabedoria', 'Carisma'],
+    savingThrowsEn: ['Wisdom', 'Charisma'],
     spellcaster: true,
     spellSlotsByLevel: {
       2: [2, 0, 0, 0, 0],
@@ -115,9 +139,12 @@ export const CLASSES: DnDClass[] = [
     id: 'ranger',
     name: 'Patrulheiro',
     description: 'Explorador habilidoso com magias da natureza e um laço profundo com animais.',
+    descriptionEn: 'Skilled explorer with nature spells and a deep bond with animals.',
     hitDie: 10,
     primaryAbility: 'Destreza e Sabedoria',
+    primaryAbilityEn: 'Dexterity and Wisdom',
     savingThrows: ['Força', 'Destreza'],
+    savingThrowsEn: ['Strength', 'Dexterity'],
     spellcaster: true,
     spellSlotsByLevel: {
       2: [2, 0, 0, 0, 0],
@@ -131,18 +158,24 @@ export const CLASSES: DnDClass[] = [
     id: 'rogue',
     name: 'Ladino',
     description: 'Especialista furtivo com habilidades de arrombamento, furtividade e ataques certeiros.',
+    descriptionEn: 'Stealthy specialist skilled in lockpicking, stealth, and precision attacks.',
     hitDie: 8,
     primaryAbility: 'Destreza',
+    primaryAbilityEn: 'Dexterity',
     savingThrows: ['Destreza', 'Inteligência'],
+    savingThrowsEn: ['Dexterity', 'Intelligence'],
     spellcaster: false,
   },
   {
     id: 'sorcerer',
     name: 'Feiticeiro',
     description: 'Conjurador com magia em seu sangue, moldando feitiços com sua força inata.',
+    descriptionEn: 'Spellcaster with magic in their blood, shaping spells with innate power.',
     hitDie: 6,
     primaryAbility: 'Carisma',
+    primaryAbilityEn: 'Charisma',
     savingThrows: ['Constituição', 'Carisma'],
+    savingThrowsEn: ['Constitution', 'Charisma'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -158,9 +191,12 @@ export const CLASSES: DnDClass[] = [
     id: 'warlock',
     name: 'Bruxo',
     description: 'Conjurador que fez um pacto com uma entidade poderosa em troca de poder arcano.',
+    descriptionEn: 'Spellcaster who made a pact with a powerful entity in exchange for arcane power.',
     hitDie: 8,
     primaryAbility: 'Carisma',
+    primaryAbilityEn: 'Charisma',
     savingThrows: ['Sabedoria', 'Carisma'],
+    savingThrowsEn: ['Wisdom', 'Charisma'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [1, 0, 0, 0, 0],
@@ -175,9 +211,12 @@ export const CLASSES: DnDClass[] = [
     id: 'wizard',
     name: 'Mago',
     description: 'Estudioso da magia arcana que aprende feitiços copiando-os de grimórios.',
+    descriptionEn: 'Scholar of arcane magic who learns spells by copying them from spellbooks.',
     hitDie: 6,
     primaryAbility: 'Inteligência',
+    primaryAbilityEn: 'Intelligence',
     savingThrows: ['Inteligência', 'Sabedoria'],
+    savingThrowsEn: ['Intelligence', 'Wisdom'],
     spellcaster: true,
     spellSlotsByLevel: {
       1: [2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -193,3 +232,4 @@ export const CLASSES: DnDClass[] = [
 
 export const getClassById = (id: string): DnDClass | undefined =>
   CLASSES.find((c) => c.id === id);
+

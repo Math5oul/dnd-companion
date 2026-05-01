@@ -1,4 +1,5 @@
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSettingsStore, THEMES } from '../store/settingsStore';
 
 interface Props {
   visible: boolean;
@@ -19,21 +20,24 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }: Props) {
+  const { theme } = useSettingsStore();
+  const c = THEMES[theme];
+
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onCancel}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onCancel}>
-        <TouchableOpacity activeOpacity={1} style={styles.box}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
+        <TouchableOpacity activeOpacity={1} style={[styles.box, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Text style={[styles.title, { color: c.accent }]}>{title}</Text>
+          <Text style={[styles.message, { color: c.subtext }]}>{message}</Text>
           <View style={styles.buttons}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-              <Text style={styles.cancelText}>Cancelar</Text>
+            <TouchableOpacity style={[styles.cancelBtn, { borderColor: c.border }]} onPress={onCancel}>
+              <Text style={[styles.cancelText, { color: c.subtext }]}>Cancelar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmBtn, confirmDestructive && styles.confirmDestructive]}
+              style={[styles.confirmBtn, { backgroundColor: c.accent }, confirmDestructive && styles.confirmDestructive]}
               onPress={onConfirm}
             >
-              <Text style={[styles.confirmText, confirmDestructive && styles.confirmTextDestructive]}>
+              <Text style={[styles.confirmText, { color: c.bg }, confirmDestructive && styles.confirmTextDestructive]}>
                 {confirmLabel}
               </Text>
             </TouchableOpacity>
@@ -53,22 +57,18 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   box: {
-    backgroundColor: '#2d1a00',
     borderRadius: 16,
     padding: 24,
     width: '100%',
     maxWidth: 400,
     borderWidth: 1,
-    borderColor: '#c9a84c55',
   },
   title: {
-    color: '#c9a84c',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
   },
   message: {
-    color: '#9a8070',
     fontSize: 14,
     lineHeight: 22,
     marginBottom: 24,
@@ -83,16 +83,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#5a4020',
   },
-  cancelText: { color: '#8a7060', fontWeight: '600' },
+  cancelText: { fontWeight: '600' },
   confirmBtn: {
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#c9a84c',
   },
   confirmDestructive: { backgroundColor: '#3a0000', borderWidth: 1, borderColor: '#ff4040' },
-  confirmText: { color: '#1a0a00', fontWeight: '700' },
+  confirmText: { fontWeight: '700' },
   confirmTextDestructive: { color: '#ff4040' },
 });

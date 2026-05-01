@@ -1,24 +1,36 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useState, useMemo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
 import { AbilityName } from '../../src/types/character';
 import { rollAbilitySet, formatModifier } from '../../src/lib/dice';
 import { getRaceById } from '../../src/data/races';
+import { useSettingsStore, THEMES } from '../../src/store/settingsStore';
+import { useI18n } from '../../src/lib/i18n';
 
-const ABILITIES: { key: AbilityName; label: string; icon: string }[] = [
-  { key: 'strength', label: 'Força', icon: '💪' },
-  { key: 'dexterity', label: 'Destreza', icon: '🏹' },
-  { key: 'constitution', label: 'Constituição', icon: '🛡️' },
-  { key: 'intelligence', label: 'Inteligência', icon: '📚' },
-  { key: 'wisdom', label: 'Sabedoria', icon: '🔮' },
-  { key: 'charisma', label: 'Carisma', icon: '✨' },
+const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
+  { key: 'strength', icon: '💪' },
+  { key: 'dexterity', icon: '🏹' },
+  { key: 'constitution', icon: '🛡️' },
+  { key: 'intelligence', icon: '📚' },
+  { key: 'wisdom', icon: '🔮' },
+  { key: 'charisma', icon: '✨' },
 ];
 
 export default function Step4Abilities() {
   const router = useRouter();
   const { draft, rolledValues, assignedValues, setRolledValues, assignValue, unassignValue } =
     useCharacterStore();
+  const { theme } = useSettingsStore();
+  const c = THEMES[theme];
+  const styles = useMemo(() => makeStyles(c), [theme]);
+  const { t, language } = useI18n();
+
+  const ABILITIES = useMemo(() => ABILITY_KEYS.map(({ key, icon }) => ({
+    key,
+    icon,
+    label: t[`${key}` as keyof typeof t] as string,
+  })), [language]);
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
@@ -43,7 +55,6 @@ export default function Step4Abilities() {
     const value = rolledValues[selectedIndex];
 
     if (assignedValues[ability] !== undefined) {
-      // Libera o dado previamente atribuído a este atributo
       const prevIndex = indexByAbility[ability];
       if (prevIndex !== undefined) {
         setUsedIndices((prev) => { const s = new Set(prev); s.delete(prevIndex); return s; });
@@ -71,21 +82,17 @@ export default function Step4Abilities() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.step}>Passo 4 de 5</Text>
-      <Text style={styles.title}>Distribua os Atributos</Text>
-      <Text style={styles.subtitle}>
-        Role 4d6 (descarta o menor) e atribua cada valor a um atributo.
-      </Text>
+      <Text style={styles.step}>{t.stepOf(4, 5)}</Text>
+      <Text style={styles.title}>{t.step4Title}</Text>
+      <Text style={styles.subtitle}>{t.step4Subtitle}</Text>
 
-      {/* Botão de rolar */}
       <TouchableOpacity style={styles.rollBtn} onPress={handleRoll}>
-        <Text style={styles.rollBtnText}>🎲 {rolledValues.length > 0 ? 'Rolar Novamente' : 'Rolar Dados'}</Text>
+        <Text style={styles.rollBtnText}>🎲 {rolledValues.length > 0 ? t.rerollDice : t.rollDice}</Text>
       </TouchableOpacity>
 
-      {/* Valores rolados */}
       {rolledValues.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Selecione um valor e depois um atributo:</Text>
+          <Text style={styles.sectionLabel}>{t.selectValueHint}</Text>
           <View style={styles.diceRow}>
             {rolledValues.map((v, i) => {
               const isUsed = usedIndices.has(i);
@@ -109,7 +116,6 @@ export default function Step4Abilities() {
         </View>
       )}
 
-      {/* Atributos */}
       <View style={styles.section}>
         {ABILITIES.map(({ key, label, icon }) => {
           const base = assignedValues[key];
@@ -132,7 +138,7 @@ export default function Step4Abilities() {
               <View style={styles.abilityInfo}>
                 <Text style={styles.abilityLabel}>{label}</Text>
                 {racial > 0 && (
-                  <Text style={styles.racialBonus}>+{racial} racial</Text>
+                  <Text style={styles.racialBonus}>+{racial} {t.racial}</Text>
                 )}
               </View>
               <View style={styles.abilityScoreBox}>
@@ -155,73 +161,82 @@ export default function Step4Abilities() {
 
       {isComplete && (
         <TouchableOpacity style={styles.btn} onPress={() => router.push('/create/step5-review')}>
-          <Text style={styles.btnText}>Revisar Personagem →</Text>
+          <Text style={styles.btnText}>{t.reviewBtn}</Text>
         </TouchableOpacity>
       )}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a0a00' },
+type ThemeColors = typeof THEMES[keyof typeof THEMES];
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
   content: { padding: 24, paddingBottom: 48 },
-  step: { color: '#a07030', fontSize: 13, marginBottom: 6 },
-  title: { color: '#c9a84c', fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
-  subtitle: { color: '#8a7060', fontSize: 14, marginBottom: 20, lineHeight: 20 },
+  step: { color: c.subtext, fontSize: 13, marginBottom: 6 },
+  title: { color: c.accent, fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+  subtitle: { color: c.subtext, fontSize: 14, marginBottom: 20, lineHeight: 20 },
   rollBtn: {
-    backgroundColor: '#3d1a00',
+    backgroundColor: c.surface,
     borderWidth: 2,
-    borderColor: '#c9a84c',
+    borderColor: c.accent,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
     marginBottom: 20,
   },
-  rollBtnText: { color: '#c9a84c', fontWeight: 'bold', fontSize: 17 },
+  rollBtnText: { color: c.accent, fontWeight: 'bold', fontSize: 17 },
   section: { marginBottom: 20 },
-  sectionLabel: { color: '#8a7060', fontSize: 13, marginBottom: 10 },
+  sectionLabel: { color: c.subtext, fontSize: 13, marginBottom: 10 },
   diceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   dieFace: {
     width: 52,
     height: 52,
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#c9a84c44',
+    borderColor: c.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dieSelected: { borderColor: '#c9a84c', backgroundColor: '#4d2a00' },
-  dieUsed: { borderColor: '#3a2a1a', backgroundColor: '#1a0f00', opacity: 0.5 },
-  dieValue: { color: '#c9a84c', fontSize: 20, fontWeight: 'bold' },
-  dieValueUsed: { color: '#5a4030' },
+  dieSelected: { borderColor: c.accent },
+  dieUsed: { opacity: 0.4 },
+  dieValue: { color: c.accent, fontSize: 20, fontWeight: 'bold' },
+  dieValueUsed: { color: c.subtext },
   abilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#c9a84c22',
+    borderColor: c.border,
   },
-  abilityRowActive: { borderColor: '#c9a84c88', backgroundColor: '#3d2500' },
-  abilityRowFilled: { borderColor: '#c9a84c44' },
+  abilityRowActive: { borderColor: c.accent },
+  abilityRowFilled: { borderColor: c.border },
   abilityIcon: { fontSize: 22, marginRight: 12 },
   abilityInfo: { flex: 1 },
-  abilityLabel: { color: '#c9a84c', fontSize: 15, fontWeight: '600' },
+  abilityLabel: { color: c.accent, fontSize: 15, fontWeight: '600' },
   racialBonus: { color: '#50d080', fontSize: 11, marginTop: 2 },
   abilityScoreBox: { alignItems: 'center', minWidth: 60 },
-  abilityScore: { color: '#e0c070', fontSize: 22, fontWeight: 'bold' },
-  abilityMod: { color: '#a07030', fontSize: 13 },
-  abilityBase: { color: '#6a5040', fontSize: 11 },
-  abilityEmpty: { color: '#4a3020', fontSize: 20 },
+  abilityScore: { color: c.text, fontSize: 22, fontWeight: 'bold' },
+  abilityMod: { color: c.subtext, fontSize: 13 },
+  abilityBase: { color: c.subtext, fontSize: 11 },
+  abilityEmpty: { color: c.subtext, fontSize: 20 },
   btn: {
-    backgroundColor: '#c9a84c',
+    backgroundColor: c.accent,
     borderRadius: 10,
     padding: 16,
     alignItems: 'center',
     marginTop: 10,
   },
-  btnText: { color: '#1a0a00', fontWeight: 'bold', fontSize: 17 },
-});
+  btnText: { color: c.bg, fontWeight: 'bold', fontSize: 17 },
+});const ABILITIES: { key: AbilityName; label: string; icon: string }[] = [
+  { key: 'strength', label: 'Força', icon: '💪' },
+  { key: 'dexterity', label: 'Destreza', icon: '🏹' },
+  { key: 'constitution', label: 'Constituição', icon: '🛡️' },
+  { key: 'intelligence', label: 'Inteligência', icon: '📚' },
+  { key: 'wisdom', label: 'Sabedoria', icon: '🔮' },
+  { key: 'charisma', label: 'Carisma', icon: '✨' },
+];
+

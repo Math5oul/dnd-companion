@@ -1,21 +1,29 @@
+import { useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
 import { RACES, Race } from '../../src/data/races';
 import { AbilityName } from '../../src/types/character';
-
-const ABILITY_LABELS: Record<AbilityName, string> = {
-  strength: 'FOR',
-  dexterity: 'DES',
-  constitution: 'CON',
-  intelligence: 'INT',
-  wisdom: 'SAB',
-  charisma: 'CAR',
-};
+import { useSettingsStore, THEMES } from '../../src/store/settingsStore';
+import { useI18n, translateRaceName } from '../../src/lib/i18n';
+import { convertSpeed } from '../../src/lib/units';
 
 export default function Step2Race() {
   const router = useRouter();
   const { draft, setDraftRace } = useCharacterStore();
+  const { theme } = useSettingsStore();
+  const c = THEMES[theme];
+  const styles = useMemo(() => makeStyles(c), [theme]);
+  const { t, language, units } = useI18n();
+
+  const ABILITY_LABELS: Record<AbilityName, string> = useMemo(() => ({
+    strength: t.strengthShort,
+    dexterity: t.dexterityShort,
+    constitution: t.constitutionShort,
+    intelligence: t.intelligenceShort,
+    wisdom: t.wisdomShort,
+    charisma: t.charismaShort,
+  }), [language]);
 
   const renderRace = ({ item }: { item: Race }) => {
     const selected = draft.race === item.id;
@@ -26,11 +34,11 @@ export default function Step2Race() {
       >
         <View style={styles.cardHeader}>
           <Text style={[styles.raceName, selected && styles.raceNameSelected]}>
-            {item.name}
+            {translateRaceName(item.id, item.name, language)}
           </Text>
-          <Text style={styles.speed}>🏃 {item.speed}ft</Text>
+          <Text style={styles.speed}>🏃 {convertSpeed(item.speed, units, language)}</Text>
         </View>
-        <Text style={styles.desc}>{item.description}</Text>
+        <Text style={styles.desc}>{language === 'en' ? (item.descriptionEn ?? item.description) : item.description}</Text>
 
         <View style={styles.bonusRow}>
           {item.bonuses.map((b) => (
@@ -43,8 +51,8 @@ export default function Step2Race() {
         </View>
 
         <View style={styles.traitRow}>
-          {item.traits.map((t) => (
-            <Text key={t} style={styles.trait}>• {t}</Text>
+          {(language === 'en' ? (item.traitsEn ?? item.traits) : item.traits).map((tr) => (
+            <Text key={tr} style={styles.trait}>• {tr}</Text>
           ))}
         </View>
       </TouchableOpacity>
@@ -53,8 +61,8 @@ export default function Step2Race() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.step}>Passo 2 de 5</Text>
-      <Text style={styles.title}>Escolha a raça de {'\n'}{useCharacterStore.getState().draft.name}</Text>
+      <Text style={styles.step}>{t.stepOf(2, 5)}</Text>
+      <Text style={styles.title}>{t.step2Title(draft.name)}</Text>
       <FlatList
         data={RACES}
         keyExtractor={(r) => r.id}
@@ -66,31 +74,32 @@ export default function Step2Race() {
         disabled={!draft.race}
         onPress={() => router.push('/create/step3-class')}
       >
-        <Text style={styles.btnText}>Continuar →</Text>
+        <Text style={styles.btnText}>{t.continueBtn}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a0a00' },
-  step: { color: '#a07030', fontSize: 13, paddingHorizontal: 24, paddingTop: 20 },
-  title: { color: '#c9a84c', fontSize: 22, fontWeight: 'bold', padding: 24, paddingBottom: 8 },
+type ThemeColors = typeof THEMES[keyof typeof THEMES];
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
+  step: { color: c.subtext, fontSize: 13, paddingHorizontal: 24, paddingTop: 20 },
+  title: { color: c.accent, fontSize: 22, fontWeight: 'bold', padding: 24, paddingBottom: 8 },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   card: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#c9a84c22',
+    borderColor: c.border,
   },
-  cardSelected: { borderColor: '#c9a84c', backgroundColor: '#3d2500' },
+  cardSelected: { borderColor: c.accent },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  raceName: { fontSize: 18, fontWeight: 'bold', color: '#a07030' },
-  raceNameSelected: { color: '#c9a84c' },
-  speed: { color: '#8a7060', fontSize: 13 },
-  desc: { color: '#9a8070', fontSize: 13, marginTop: 4, marginBottom: 8, lineHeight: 18 },
+  raceName: { fontSize: 18, fontWeight: 'bold', color: c.subtext },
+  raceNameSelected: { color: c.accent },
+  speed: { color: c.subtext, fontSize: 13 },
+  desc: { color: c.subtext, fontSize: 13, marginTop: 4, marginBottom: 8, lineHeight: 18 },
   bonusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   bonusBadge: {
     backgroundColor: '#1a3020',
@@ -100,14 +109,15 @@ const styles = StyleSheet.create({
   },
   bonusText: { color: '#50d080', fontSize: 12, fontWeight: '600' },
   traitRow: { gap: 2 },
-  trait: { color: '#8a7060', fontSize: 12 },
+  trait: { color: c.subtext, fontSize: 12 },
   btn: {
     margin: 16,
-    backgroundColor: '#c9a84c',
+    backgroundColor: c.accent,
     borderRadius: 10,
     padding: 16,
     alignItems: 'center',
   },
-  btnDisabled: { backgroundColor: '#5a4020', opacity: 0.6 },
-  btnText: { color: '#1a0a00', fontWeight: 'bold', fontSize: 17 },
+  btnDisabled: { opacity: 0.4 },
+  btnText: { color: c.bg, fontWeight: 'bold', fontSize: 17 },
 });
+

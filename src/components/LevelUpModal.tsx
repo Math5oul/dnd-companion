@@ -8,6 +8,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { getFeaturesForLevel, getOptionNameMapForClass, ClassFeature } from '../data/classFeatures';
+import { useI18n } from '../lib/i18n';
+import { localizeFeatureName, localizeFeatureDesc } from '../lib/translations';
 
 interface Props {
   visible: boolean;
@@ -30,6 +32,7 @@ export default function LevelUpModal({
 }: Props) {
   const newLevel = currentLevel + 1;
   const features = useMemo(() => getFeaturesForLevel(classId, newLevel), [classId, newLevel]);
+  const { language } = useI18n();
 
   // choices: featureId -> selectedOptionId
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -103,7 +106,7 @@ export default function LevelUpModal({
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>✨ Novas Habilidades</Text>
                 {autoFeatures.map((f) => (
-                  <FeatureCard key={f.id} feature={f} />
+                  <FeatureCard key={f.id} feature={f} language={language} />
                 ))}
               </View>
             )}
@@ -111,7 +114,7 @@ export default function LevelUpModal({
             {/* Choice features */}
             {choiceFeatures.map((f) => (
               <View key={f.id} style={styles.section}>
-                <Text style={styles.sectionTitle}>🎯 {f.name}</Text>
+                <Text style={styles.sectionTitle}>🎯 {localizeFeatureName(f.id, f.name, language)}</Text>
                 <Text style={styles.choiceDesc}>{f.description}</Text>
                 {f.options?.map((opt) => {
                   const selected = choices[f.id] === opt.id;
@@ -136,11 +139,11 @@ export default function LevelUpModal({
                           selected && styles.optionNameSelected,
                           takenByOther && styles.optionNameDisabled,
                         ]}>
-                          {opt.name}{takenByOther ? ' ✗' : ''}
+                          {localizeFeatureName(opt.id, opt.name, language)}{takenByOther ? ' ✗' : ''}
                         </Text>
                       </View>
                       <Text style={[styles.optionDesc, takenByOther && styles.optionDescDisabled]}>
-                        {takenByOther ? 'Já escolhida em outra seleção.' : opt.description}
+                        {takenByOther ? 'Já escolhida em outra seleção.' : localizeFeatureDesc(opt.id, opt.description, language)}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -184,11 +187,11 @@ export default function LevelUpModal({
   );
 }
 
-function FeatureCard({ feature }: { feature: ClassFeature }) {
+function FeatureCard({ feature, language }: { feature: ClassFeature; language: string }) {
   return (
     <View style={styles.featureCard}>
-      <Text style={styles.featureName}>{feature.name}</Text>
-      <Text style={styles.featureDesc}>{feature.description}</Text>
+      <Text style={styles.featureName}>{localizeFeatureName(feature.id, feature.name, language as 'pt' | 'en')}</Text>
+      <Text style={styles.featureDesc}>{localizeFeatureDesc(feature.id, feature.description, language as 'pt' | 'en')}</Text>
     </View>
   );
 }

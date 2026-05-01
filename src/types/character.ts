@@ -28,6 +28,8 @@ export interface Character {
   traits: string[];
   /** Pontos de Feitiçaria (Sorcerer) */
   sorceryPoints?: { total: number; used: number };
+  /** Dados de Vida usados (Short Rest). Reseta no Long Rest. */
+  hitDiceUsed?: number;
   createdAt: string;
   updatedAt: string;
 }

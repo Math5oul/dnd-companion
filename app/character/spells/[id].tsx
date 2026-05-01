@@ -9,15 +9,24 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCharacterStore } from '../../../src/store/characterStore';
+import { useSettingsStore, THEMES } from '../../../src/store/settingsStore';
+import { useI18n, translateClassName } from '../../../src/lib/i18n';
+import { convertRange, convertDuration, convertCastingTime, convertSchool } from '../../../src/lib/units';
+import { localizeSpellName, localizeSpellDesc } from '../../../src/lib/translations';
 import { getSpellsByClassAndMaxLevel, getSpellById, Spell, SCHOOL_ICON, SCHOOL_COLOR } from '../../../src/data/spells';
 import { getClassById } from '../../../src/data/classes';
 
-const LEVEL_LABELS = ['Truque', '1°', '2°', '3°', '4°', '5°'];
+const LEVEL_LABELS_PT = ['Truque', '1°', '2°', '3°', '4°', '5°'];
+const LEVEL_LABELS_EN = ['Cantrip', '1st', '2nd', '3rd', '4th', '5th'];
 
 export default function SpellSelection() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { characters, toggleSpell } = useCharacterStore();
+  const { theme } = useSettingsStore();
+  const themeColors = THEMES[theme];
+  const styles = useMemo(() => makeStyles(themeColors), [theme]);
+  const { t, language, units } = useI18n();
 
   const char = characters.find((c) => c.id === id);
   const cls = getClassById(char?.className ?? '');
@@ -69,7 +78,7 @@ export default function SpellSelection() {
     levels.forEach((lvl) => {
       groups.push({
         level: lvl,
-        label: lvl === 0 ? 'Truques (Cantrips)' : `${LEVEL_LABELS[lvl]} Nível`,
+        label: lvl === 0 ? t.cantripGroupLabel : t.levelGroupLabel(lvl),
         items: filtered.filter((s) => s.level === lvl),
       });
     });
@@ -83,11 +92,13 @@ export default function SpellSelection() {
           {!char ? 'Personagem não encontrado.' : `${cls?.name ?? 'Esta classe'} não é conjuradora.`}
         </Text>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backLink}>← Voltar</Text>
+          <Text style={styles.backLink}>{t.back}</Text>
         </TouchableOpacity>
       </View>
     );
   }
+
+  const LEVEL_LABELS = language === 'en' ? LEVEL_LABELS_EN : LEVEL_LABELS_PT;
 
   const renderSpell = (spell: Spell) => {
     const known = knownSpells.has(spell.id);
@@ -104,7 +115,7 @@ export default function SpellSelection() {
       >
         {atLimit && (
           <Text style={styles.limitTag}>
-            {spell.level === 0 ? 'Limite de truques atingido' : 'Limite de magias atingido'}
+            {spell.level === 0 ? t.cantripLimit : t.spellLimit}
           </Text>
         )}
         <View style={styles.spellLeft}>
@@ -113,15 +124,17 @@ export default function SpellSelection() {
           </View>
           <View style={styles.spellInfo}>
             <View style={styles.spellNameRow}>
-              <Text style={[styles.spellName, known && styles.spellNameKnown]}>{spell.name}</Text>
+              <Text style={[styles.spellName, known && styles.spellNameKnown]}>{localizeSpellName(spell, language)}</Text>
               {known && <Text style={styles.checkmark}>✓</Text>}
             </View>
-            <Text style={[styles.schoolLabel, { color: schoolColor }]}>{spell.school}</Text>
-            <Text style={styles.spellDesc} numberOfLines={2}>{spell.description}</Text>
+            <Text style={[styles.schoolLabel, { color: schoolColor }]}>
+              {convertSchool(spell.school, language)}
+            </Text>
+            <Text style={styles.spellDesc} numberOfLines={2}>{localizeSpellDesc(spell, language)}</Text>
             <View style={styles.spellMeta}>
-              <Text style={styles.metaTag}>⏱ {spell.castingTime}</Text>
-              <Text style={styles.metaTag}>📍 {spell.range}</Text>
-              <Text style={styles.metaTag}>⌛ {spell.duration}</Text>
+              <Text style={styles.metaTag}>⏱ {convertCastingTime(spell.castingTime, language)}</Text>
+              <Text style={styles.metaTag}>📍 {convertRange(spell.range, units, language)}</Text>
+              <Text style={styles.metaTag}>⌛ {convertDuration(spell.duration, language)}</Text>
             </View>
           </View>
         </View>
@@ -133,16 +146,21 @@ export default function SpellSelection() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>📖 Grimório de {char.name}</Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+            <Text style={styles.backBtnText}>{t.back}</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.title}>{t.spellbookTitle(char.name)}</Text>
         <Text style={styles.subtitle}>
-          {cls.name} · Nível {char.level}
+          {translateClassName(char?.className ?? '', cls?.name ?? '', language)} · {t.level} {char.level}
         </Text>
         <View style={styles.limitsRow}>
           <Text style={[styles.limitBadge, knownCantripCount >= maxCantrips && styles.limitBadgeFull]}>
-            ✨ {knownCantripCount}/{maxCantrips === Infinity ? '∞' : maxCantrips} truques
+            {t.cantripsCount(knownCantripCount, maxCantrips === Infinity ? '∞' : maxCantrips)}
           </Text>
           <Text style={[styles.limitBadge, knownSpellCount >= maxSpells && styles.limitBadgeFull]}>
-            📚 {knownSpellCount}/{maxSpells === Infinity ? '∞' : maxSpells} magias
+            {t.spellsCount(knownSpellCount, maxSpells === Infinity ? '∞' : maxSpells)}
           </Text>
         </View>
       </View>
@@ -150,8 +168,8 @@ export default function SpellSelection() {
       {/* Busca */}
       <TextInput
         style={styles.search}
-        placeholder="Buscar magia..."
-        placeholderTextColor="#6a5040"
+        placeholder={t.searchPlaceholder}
+        placeholderTextColor={themeColors.subtext}
         value={search}
         onChangeText={setSearch}
       />
@@ -163,7 +181,7 @@ export default function SpellSelection() {
           onPress={() => setFilterLevel(null)}
         >
           <Text style={[styles.levelBtnText, filterLevel === null && styles.levelBtnTextActive]}>
-            Todos
+            {t.allFilter}
           </Text>
         </TouchableOpacity>
         {[...new Set(spells.map((s) => s.level))].sort((a, b) => a - b).map((lvl) => (
@@ -173,7 +191,7 @@ export default function SpellSelection() {
             onPress={() => setFilterLevel(filterLevel === lvl ? null : lvl)}
           >
             <Text style={[styles.levelBtnText, filterLevel === lvl && styles.levelBtnTextActive]}>
-              {LEVEL_LABELS[lvl]}
+              {LEVEL_LABELS[lvl] ?? lvl}
             </Text>
           </TouchableOpacity>
         ))}
@@ -191,43 +209,45 @@ export default function SpellSelection() {
           </View>
         )}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>Nenhuma magia encontrada.</Text>
+          <Text style={styles.emptyText}>{t.noSpellsFound}</Text>
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a0a00' },
-  center: { flex: 1, backgroundColor: '#1a0a00', alignItems: 'center', justifyContent: 'center' },
+type ThemeColors = typeof THEMES[keyof typeof THEMES];
+
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
+  center: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' },
 
   header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
-  title: { color: '#c9a84c', fontSize: 20, fontWeight: 'bold' },
-  subtitle: { color: '#a07030', fontSize: 13, marginTop: 2 },
+  title: { color: c.accent, fontSize: 20, fontWeight: 'bold' },
+  subtitle: { color: c.subtext, fontSize: 13, marginTop: 2 },
   limitsRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   limitBadge: {
-    color: '#a07030',
+    color: c.subtext,
     fontSize: 12,
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#c9a84c44',
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 3,
   },
-  limitBadgeFull: { borderColor: '#c9a84c', color: '#c9a84c' },
+  limitBadgeFull: { borderColor: c.accent, color: c.accent },
 
   search: {
     marginHorizontal: 16,
     marginBottom: 10,
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#c9a84c44',
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#e0c070',
+    color: c.text,
     fontSize: 15,
   },
 
@@ -242,18 +262,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#c9a84c33',
+    borderColor: c.border,
   },
-  levelBtnActive: { backgroundColor: '#c9a84c', borderColor: '#c9a84c' },
-  levelBtnText: { color: '#a07030', fontSize: 12, fontWeight: '600' },
-  levelBtnTextActive: { color: '#1a0a00' },
+  levelBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+  levelBtnText: { color: c.subtext, fontSize: 12, fontWeight: '600' },
+  levelBtnTextActive: { color: c.bg },
 
   list: { paddingHorizontal: 16, paddingBottom: 40 },
 
   groupHeader: {
-    color: '#c9a84c',
+    color: c.accent,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -264,22 +284,22 @@ const styles = StyleSheet.create({
   },
 
   spellCard: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#c9a84c22',
+    borderColor: c.border,
   },
   spellCardKnown: {
-    borderColor: '#c9a84c88',
-    backgroundColor: '#3a2200',
+    borderColor: c.accent,
+    backgroundColor: c.bg,
   },
   spellCardDisabled: {
     opacity: 0.4,
   },
   limitTag: {
-    color: '#c9a84c',
+    color: c.accent,
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -300,21 +320,44 @@ const styles = StyleSheet.create({
   schoolIcon: { fontSize: 18 },
   spellInfo: { flex: 1 },
   spellNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  spellName: { color: '#a07030', fontSize: 15, fontWeight: '700' },
-  spellNameKnown: { color: '#c9a84c' },
+  spellName: { color: c.subtext, fontSize: 15, fontWeight: '700' },
+  spellNameKnown: { color: c.accent },
   checkmark: { color: '#50d080', fontSize: 14, fontWeight: 'bold' },
   schoolLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
-  spellDesc: { color: '#8a7060', fontSize: 12, lineHeight: 17, marginBottom: 6 },
+  spellDesc: { color: c.subtext, fontSize: 12, lineHeight: 17, marginBottom: 6 },
   spellMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   metaTag: {
-    backgroundColor: '#1a0f00',
-    color: '#6a5040',
+    backgroundColor: c.bg,
+    color: c.subtext,
     fontSize: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
 
-  emptyText: { color: '#6a5040', textAlign: 'center', marginTop: 40, fontSize: 15 },
-  backLink: { color: '#a07030', fontSize: 16, marginTop: 12 },
+  emptyText: { color: c.subtext, textAlign: 'center', marginTop: 40, fontSize: 15 },
+  backLink: { color: c.subtext, fontSize: 16, marginTop: 12 },
+
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  backBtnText: {
+    color: c.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });
+

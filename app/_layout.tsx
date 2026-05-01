@@ -1,21 +1,36 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import TabBar from '../src/components/TabBar';
+import { useSettingsStore, THEMES } from '../src/store/settingsStore';
 
 export default function RootLayout() {
+  const { loadSettings, theme } = useSettingsStore();
+  const colors = THEMES[theme];
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: '#1a0a00' },
-          headerTintColor: '#c9a84c',
-          headerTitleStyle: { fontWeight: 'bold' },
-          contentStyle: { backgroundColor: '#1a0a00' },
-        }}
-      />
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.root}>
+        <StatusBar style="light" />
+        <View style={[styles.root, { backgroundColor: colors.bg }]}>
+          <TabBar />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.bg },
+              animation: 'fade',
+            }}
+          />
+        </View>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

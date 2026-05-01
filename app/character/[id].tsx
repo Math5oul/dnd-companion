@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,33 +10,53 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
-import { formatModifier, rollDamage } from '../../src/lib/dice';
+import { useTabStore } from '../../src/store/tabStore';
+import { useSettingsStore, THEMES } from '../../src/store/settingsStore';
+import { useI18n, translateRaceName, translateClassName } from '../../src/lib/i18n';
+import { convertRange, convertDuration, convertCastingTime, convertSchool, convertTextDistances, translateDamageType } from '../../src/lib/units';
+import { localizeSpellName, localizeFeatureName, localizeFeatureDesc } from '../../src/lib/translations';import { formatModifier, rollDamage } from '../../src/lib/dice';
 import { getRaceById } from '../../src/data/races';
 import { getClassById } from '../../src/data/classes';
 import { getSpellById, getSpellDamage, getSpellDamageAtSlot, SCHOOL_ICON, SCHOOL_COLOR } from '../../src/data/spells';
 import { AbilityName } from '../../src/types/character';
 import ConfirmModal from '../../src/components/ConfirmModal';
 import LevelUpModal from '../../src/components/LevelUpModal';
+import ShortRestModal from '../../src/components/ShortRestModal';
 import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src/data/classFeatures';
 
-const ABILITIES: { key: AbilityName; label: string; icon: string }[] = [
-  { key: 'strength', label: 'Força', icon: '💪' },
-  { key: 'dexterity', label: 'Destreza', icon: '🏹' },
-  { key: 'constitution', label: 'Constituição', icon: '🛡️' },
-  { key: 'intelligence', label: 'Inteligência', icon: '📚' },
-  { key: 'wisdom', label: 'Sabedoria', icon: '🔮' },
-  { key: 'charisma', label: 'Carisma', icon: '✨' },
+const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
+  { key: 'strength', icon: '💪' },
+  { key: 'dexterity', icon: '🏹' },
+  { key: 'constitution', icon: '🛡️' },
+  { key: 'intelligence', icon: '📚' },
+  { key: 'wisdom', icon: '🔮' },
+  { key: 'charisma', icon: '✨' },
 ];
 
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot } = useCharacterStore();
+  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest } = useCharacterStore();
+  const { openTab, closeTab } = useTabStore();
+  const { theme } = useSettingsStore();
+  const themeColors = THEMES[theme];
+  const styles = useMemo(() => makeStyles(themeColors), [theme]);
+  const { t, language, units } = useI18n();
+
+  // Build ability list with translated labels
+  const ABILITIES = useMemo(() => ABILITY_KEYS.map(({ key, icon }) => ({
+    key, icon, label: t[key as keyof typeof t] as string,
+  })), [language]);
 
   const char = characters.find((c) => c.id === id);
+
+  // Register tab when character loads
+  useEffect(() => {
+    if (char) openTab(char.id, char.name);
+  }, [char?.id, char?.name]);
   const [hpDelta, setHpDelta] = useState(0);
 
-  type ModalType = 'delete' | 'levelup' | 'longrest' | 'noslot' | null;
+  type ModalType = 'delete' | 'levelup' | 'longrest' | 'shortrest' | 'noslot' | null;
   const [modal, setModal] = useState<ModalType>(null);
   const [noSlotLevel, setNoSlotLevel] = useState(0);
   const [statDetailKey, setStatDetailKey] = useState<AbilityName | null>(null);
@@ -99,7 +119,7 @@ export default function CharacterSheet() {
       <View style={styles.notFound}>
         <Text style={styles.notFoundText}>Personagem não encontrado.</Text>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backLink}>← Voltar</Text>
+          <Text style={styles.backLink}>{t.back}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -107,6 +127,8 @@ export default function CharacterSheet() {
 
   const race = getRaceById(char.race);
   const cls = getClassById(char.className);
+  const raceName = translateRaceName(char.race, race?.name ?? char.race, language);
+  const className = translateClassName(char.className, cls?.name ?? char.className, language);
 
   const handleHpChange = (delta: number) => {
     const newHp = Math.max(0, Math.min(char.maxHp, char.hp + delta));
@@ -130,10 +152,10 @@ export default function CharacterSheet() {
   const handleShare = async () => {
     const text = [
       `⚔️ ${char.name}`,
-      `${race?.name ?? char.race} · ${cls?.name ?? char.className} · Nível ${char.level}`,
+      `${raceName} · ${className} · ${t.level} ${char.level}`,
       `❤️ HP: ${char.hp}/${char.maxHp}`,
       '',
-      'Atributos:',
+      `${t.attributes}:`,
       ...ABILITIES.map(({ key, label }) => {
           const total = char.abilityScores[key] + (asiTotals[key] ?? 0);
           return `  ${label}: ${total} (${formatModifier(total)})`;
@@ -147,7 +169,9 @@ export default function CharacterSheet() {
   const hpColor =
     hpPercent > 0.6 ? '#50d080' : hpPercent > 0.3 ? '#e0a030' : '#ff5050';
 
-  const spellLevelNames = ['1°', '2°', '3°', '4°', '5°', '6°', '7°', '8°', '9°'];
+  const spellLevelNames = language === 'en'
+    ? ['1st','2nd','3rd','4th','5th','6th','7th','8th','9th']
+    : ['1°','2°','3°','4°','5°','6°','7°','8°','9°'];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -156,18 +180,18 @@ export default function CharacterSheet() {
         <View>
           <Text style={styles.charName}>{char.name}</Text>
           <Text style={styles.charSub}>
-            {race?.name ?? char.race} · {cls?.name ?? char.className} · Nível {char.level}
+            {raceName} · {className} · {t.level} {char.level}
           </Text>
         </View>
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-          <Text style={styles.shareBtnText}>🔗 Compartilhar</Text>
+          <Text style={styles.shareBtnText}>{t.share}</Text>
         </TouchableOpacity>
       </View>
 
       {/* HP */}
       <View style={styles.hpCard}>
         <View style={styles.hpHeader}>
-          <Text style={styles.hpLabel}>Pontos de Vida</Text>
+          <Text style={styles.hpLabel}>{t.hitPoints}</Text>
           <Text style={[styles.hpValue, { color: hpColor }]}>
             {char.hp} / {char.maxHp}
           </Text>
@@ -192,7 +216,7 @@ export default function CharacterSheet() {
       </View>
 
       {/* Atributos */}
-      <Text style={styles.sectionTitle}>Atributos</Text>
+      <Text style={styles.sectionTitle}>{t.attributes}</Text>
       <View style={styles.statsGrid}>
         {ABILITIES.map(({ key, label, icon }) => {
           const base = char.abilityScores[key];
@@ -221,20 +245,20 @@ export default function CharacterSheet() {
               <View style={styles.statModalBox}>
                 <Text style={styles.statModalTitle}>{ab.icon} {ab.label}</Text>
                 <View style={styles.statModalRow}>
-                  <Text style={styles.statModalLabel}>Base (criação)</Text>
+                  <Text style={styles.statModalLabel}>{t.base}</Text>
                   <Text style={styles.statModalValue}>{base}</Text>
                 </View>
                 {bonus > 0 && (
                   <View style={styles.statModalRow}>
-                    <Text style={styles.statModalLabel}>Bônus de ASI (traits)</Text>
+                    <Text style={styles.statModalLabel}>{t.asi}</Text>
                     <Text style={[styles.statModalValue, { color: '#50d080' }]}>+{bonus}</Text>
                   </View>
                 )}
                 <View style={[styles.statModalRow, styles.statModalTotal]}>
-                  <Text style={styles.statModalLabelBold}>Total</Text>
+                  <Text style={styles.statModalLabelBold}>{t.total}</Text>
                   <Text style={styles.statModalValueBold}>{total}  ({formatModifier(total)})</Text>
                 </View>
-                <Text style={styles.statModalHint}>Toque fora para fechar</Text>
+                <Text style={styles.statModalHint}>{t.tapForDetail}</Text>
               </View>
             </TouchableOpacity>
           </Modal>
@@ -252,15 +276,15 @@ export default function CharacterSheet() {
         ]);
         return (
           <>
-            <Text style={styles.sectionTitle}>📜 Habilidades & Traits</Text>
+            <Text style={styles.sectionTitle}>{t.features}</Text>
             <View style={styles.traitsBlock}>
               {(char.traits ?? []).map((tid) => {
                 const info = traitMap[tid];
                 if (!info) return null;
                 return (
                   <View key={tid} style={styles.traitCard}>
-                    <Text style={styles.traitName}>{info.name}</Text>
-                    <Text style={styles.traitDesc}>{info.description}</Text>
+                    <Text style={styles.traitName}>{localizeFeatureName(tid, info.name, language)}</Text>
+                    <Text style={styles.traitDesc}>{localizeFeatureDesc(tid, convertTextDistances(info.description, units, language), language)}</Text>
                   </View>
                 );
               })}
@@ -272,7 +296,7 @@ export default function CharacterSheet() {
       {/* Magias */}
       {cls?.spellcaster && (
         <>
-          <Text style={styles.sectionTitle}>Magias</Text>
+          <Text style={styles.sectionTitle}>{t.spells}</Text>
 
           {/* Pontos de Feitiçaria (apenas Sorcerer nível ≥ 2) */}
           {char.className === 'sorcerer' && char.sorceryPoints && char.sorceryPoints.total > 0 && (() => {
@@ -281,7 +305,7 @@ export default function CharacterSheet() {
             return (
               <View style={styles.sorceryBlock}>
                 <View style={styles.sorceryHeader}>
-                  <Text style={styles.sorceryTitle}>✨ Pontos de Feitiçaria</Text>
+                  <Text style={styles.sorceryTitle}>{t.sorceryPoints}</Text>
                   <Text style={styles.sorceryCount}>{available}/{total}</Text>
                 </View>
                 <View style={styles.sorceryDots}>
@@ -297,7 +321,7 @@ export default function CharacterSheet() {
                 </View>
 
                 {/* Flexible Casting — Slot → Pontos */}
-                <Text style={styles.flexCastLabel}>Slot → Pontos</Text>
+                <Text style={styles.flexCastLabel}>{t.slotToPoints}</Text>
                 <View style={styles.flexCastRow}>
                   {[1,2,3,4,5,6,7,8,9].map((lvl) => {
                     const slotInfo = char.spellSlots?.[lvl];
@@ -310,14 +334,14 @@ export default function CharacterSheet() {
                         disabled={slotAvailable <= 0}
                         onPress={() => convertSlotToPoints(char.id, lvl)}
                       >
-                        <Text style={styles.flexCastBtnText}>{lvl}° +{lvl}pt</Text>
+                        <Text style={styles.flexCastBtnText}>{spellLevelNames[lvl-1]} +{lvl}pt</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
                 {/* Flexible Casting — Pontos → Slot */}
-                <Text style={styles.flexCastLabel}>Pontos → Slot</Text>
+                <Text style={styles.flexCastLabel}>{t.pointsToSlot}</Text>
                 <View style={styles.flexCastRow}>
                   {([1,2,3,4,5] as const).map((lvl) => {
                     const COST: Record<number,number> = {1:2,2:3,3:5,4:6,5:7};
@@ -330,7 +354,7 @@ export default function CharacterSheet() {
                         disabled={!canAfford}
                         onPress={() => convertPointsToSlot(char.id, lvl)}
                       >
-                        <Text style={styles.flexCastBtnText}>{lvl}° -{cost}pt</Text>
+                        <Text style={styles.flexCastBtnText}>{spellLevelNames[lvl-1]} -{cost}pt</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -342,7 +366,7 @@ export default function CharacterSheet() {
           {/* Truques */}
           {(knownSpellsByLevel[0]?.length ?? 0) > 0 && (
             <View style={styles.spellsBlock}>
-              <Text style={styles.spellGroupLabel}>TRUQUES</Text>
+              <Text style={styles.spellGroupLabel}>{t.cantrips.toUpperCase()}</Text>
               {knownSpellsByLevel[0].map((sp) => {
                 const dmg = getSpellDamage(sp, char.level);
                 const result = rollResults[sp.id];
@@ -356,11 +380,11 @@ export default function CharacterSheet() {
                     <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>
                       {SCHOOL_ICON[sp.school]}
                     </Text>
-                    <Text style={styles.spellMiniName}>{sp.name}</Text>
+                    <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
                     {result ? (
                       <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
                     ) : dmg ? (
-                      <Text style={styles.spellMiniDmg}>🎲 {dmg}</Text>
+                      <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
                     ) : (
                       <Text style={styles.spellMiniCast}>toque</Text>
                     )}
@@ -380,7 +404,7 @@ export default function CharacterSheet() {
                 return (
                   <View key={lvl} style={styles.slotGroup}>
                     <View style={styles.spellRow}>
-                      <Text style={styles.spellLevel}>{spellLevelNames[Number(lvl) - 1]} nível</Text>
+                      <Text style={styles.spellLevel}>{spellLevelNames[Number(lvl) - 1]} {language === 'en' ? 'level' : 'nível'}</Text>
                       <View style={styles.slotDots}>
                         {Array.from({ length: slot.total }).map((_, i) => (
                           <View
@@ -392,7 +416,7 @@ export default function CharacterSheet() {
                       <Text style={styles.slotCount}>{available}/{slot.total}</Text>
                     </View>
                     {spellsOfLevel.length === 0 && upcastable.length === 0 && (
-                      <Text style={styles.noSpellsHint}>Nenhuma magia de {spellLevelNames[Number(lvl) - 1]} nível</Text>
+                      <Text style={styles.noSpellsHint}>{t.noSpellsHint}</Text>
                     )}
                     {spellsOfLevel.map((sp) => {
                       const dmg = getSpellDamage(sp, char.level);
@@ -411,11 +435,11 @@ export default function CharacterSheet() {
                           <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>
                             {SCHOOL_ICON[sp.school]}
                           </Text>
-                          <Text style={styles.spellMiniName}>{sp.name}</Text>
+                          <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
                           {result ? (
                             <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
                           ) : dmg ? (
-                            <Text style={styles.spellMiniDmg}>🎲 {dmg}</Text>
+                            <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
                           ) : (
                             <Text style={styles.spellMiniCast}>toque</Text>
                           )}
@@ -441,13 +465,13 @@ export default function CharacterSheet() {
                             {SCHOOL_ICON[sp.school]}
                           </Text>
                           <View style={styles.upcastNameRow}>
-                            <Text style={styles.spellMiniName}>{sp.name}</Text>
+                            <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
                             <Text style={styles.upcastBadge}>↑{lvl}°</Text>
                           </View>
                           {result ? (
                             <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
                           ) : dmg ? (
-                            <Text style={styles.spellMiniDmg}>🎲 {dmg}</Text>
+                            <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
                           ) : (
                             <Text style={styles.spellMiniCast}>toque</Text>
                           )}
@@ -463,41 +487,47 @@ export default function CharacterSheet() {
       )}
 
       {/* Ações */}
-      <Text style={styles.sectionTitle}>Ações</Text>
+      <Text style={styles.sectionTitle}>{t.actions}</Text>
       {cls?.spellcaster && (
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => router.push(`/character/spells/${char.id}`)}
         >
-          <Text style={styles.actionBtnText}>📖 Gerenciar Grimório</Text>
+          <Text style={styles.actionBtnText}>{t.manageSpellbook}</Text>
           <Text style={styles.actionBtnSub}>
-            {(char.spells?.length ?? 0)} {(char.spells?.length ?? 0) === 1 ? 'magia' : 'magias'} selecionadas
+            {t.spellsAdded(char.spells?.length ?? 0)}
           </Text>
         </TouchableOpacity>
       )}
       <TouchableOpacity style={styles.actionBtn} onPress={handleLongRestConfirm}>
-        <Text style={styles.actionBtnText}>🌙 Descanso Longo</Text>
-        <Text style={styles.actionBtnSub}>Recupera HP e Spell Slots</Text>
+        <Text style={styles.actionBtnText}>{t.longRest}</Text>
+        <Text style={styles.actionBtnSub}>{t.longRestSub}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.actionBtn} onPress={() => setModal('shortrest')}>
+        <Text style={styles.actionBtnText}>{t.shortRest}</Text>
+        <Text style={styles.actionBtnSub}>{t.shortRestSub}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.levelUpBtn} onPress={handleLevelUp}>
-        <Text style={styles.levelUpBtnText}>⬆️ Level Up — Nível {char.level} → {char.level + 1}</Text>
+        <Text style={styles.levelUpBtnText}>{t.levelUp(char.level, char.level + 1)}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-        <Text style={styles.deleteBtnText}>🗑️ Deletar Personagem</Text>
+        <Text style={styles.deleteBtnText}>{t.deleteChar}</Text>
       </TouchableOpacity>
 
       {/* Modais de confirmação */}
       <ConfirmModal
         visible={modal === 'delete'}
-        title="Deletar personagem"
-        message={`Tem certeza que deseja deletar ${char.name}? Essa ação não pode ser desfeita.`}
-        confirmLabel="Deletar"
+        title={t.deleteTitle}
+        message={t.deleteMsg(char.name)}
+        confirmLabel={t.deleteLabel}
         confirmDestructive
         onCancel={() => setModal(null)}
         onConfirm={async () => {
           setModal(null);
+          closeTab(char.id);
           router.replace('/');
           await deleteCharacter(char.id);
         }}
@@ -516,9 +546,9 @@ export default function CharacterSheet() {
       />
       <ConfirmModal
         visible={modal === 'longrest'}
-        title="🌙 Descanso Longo"
-        message="Recuperar todos os spell slots e HP máximo?"
-        confirmLabel="Descansar"
+        title={t.longRestTitle}
+        message={t.longRestMsg}
+        confirmLabel={t.confirm}
         onCancel={() => setModal(null)}
         onConfirm={() => {
           setModal(null);
@@ -527,11 +557,20 @@ export default function CharacterSheet() {
           recoverSorceryPoints(char.id);
         }}
       />
+      <ShortRestModal
+        visible={modal === 'shortrest'}
+        character={char}
+        onCancel={() => setModal(null)}
+        onConfirm={(diceSpent, hpGained) => {
+          setModal(null);
+          shortRest(char.id, diceSpent, hpGained);
+        }}
+      />
       <ConfirmModal
         visible={modal === 'noslot'}
-        title="Sem slots disponíveis"
-        message={`Você não tem mais slots de nível ${noSlotLevel} disponíveis.`}
-        confirmLabel="OK"
+        title={t.noSlotsTitle}
+        message={t.noSlotsMsg(noSlotLevel)}
+        confirmLabel={t.ok}
         onCancel={() => setModal(null)}
         onConfirm={() => setModal(null)}
       />
@@ -539,12 +578,13 @@ export default function CharacterSheet() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a0a00' },
+type ThemeColors = typeof THEMES[keyof typeof THEMES];
+
+const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 60 },
-  notFound: { flex: 1, backgroundColor: '#1a0a00', alignItems: 'center', justifyContent: 'center' },
-  notFoundText: { color: '#c9a84c', fontSize: 18, marginBottom: 12 },
-  backLink: { color: '#a07030', fontSize: 16 },
+  notFound: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' },
+  notFoundText: { color: c.accent, fontSize: 18, marginBottom: 12 },
+  backLink: { color: c.subtext, fontSize: 16 },
 
   header: {
     flexDirection: 'row',
@@ -552,32 +592,32 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 20,
   },
-  charName: { color: '#c9a84c', fontSize: 26, fontWeight: 'bold' },
-  charSub: { color: '#a07030', fontSize: 14, marginTop: 4 },
+  charName: { color: c.accent, fontSize: 26, fontWeight: 'bold' },
+  charSub: { color: c.subtext, fontSize: 14, marginTop: 4 },
   shareBtn: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#c9a84c44',
+    borderColor: c.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  shareBtnText: { color: '#c9a84c', fontSize: 13 },
+  shareBtnText: { color: c.accent, fontSize: 13 },
 
   hpCard: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#c9a84c33',
+    borderColor: c.border,
   },
   hpHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  hpLabel: { color: '#8a7060', fontSize: 14 },
+  hpLabel: { color: c.subtext, fontSize: 14 },
   hpValue: { fontSize: 22, fontWeight: 'bold' },
   hpBarBg: {
     height: 8,
-    backgroundColor: '#1a0a00',
+    backgroundColor: c.bg,
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 14,
@@ -586,7 +626,7 @@ const styles = StyleSheet.create({
   hpActions: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   hpBtn: {
     flex: 1,
-    backgroundColor: '#3a1a00',
+    backgroundColor: c.surface,
     borderRadius: 8,
     padding: 10,
     alignItems: 'center',
@@ -594,25 +634,25 @@ const styles = StyleSheet.create({
     borderColor: '#ff505055',
   },
   hpBtnHeal: { borderColor: '#50d08055' },
-  hpBtnText: { color: '#e0c070', fontWeight: '600' },
+  hpBtnText: { color: c.text, fontWeight: '600' },
 
-  sectionTitle: { color: '#c9a84c', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { color: c.accent, fontSize: 16, fontWeight: '700', marginBottom: 12 },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24, justifyContent: 'center' },
   statBox: {
     width: '30%',
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 10,
     padding: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#c9a84c33',
+    borderColor: c.border,
   },
   statIcon: { fontSize: 18, marginBottom: 4 },
-  statScore: { color: '#e0c070', fontSize: 22, fontWeight: 'bold' },
+  statScore: { color: c.text, fontSize: 22, fontWeight: 'bold' },
   statBonus: { color: '#50d080', fontSize: 10, fontWeight: '600', marginTop: -2 },
-  statMod: { color: '#a07030', fontSize: 14, fontWeight: '600' },
-  statLabel: { color: '#6a5040', fontSize: 11, marginTop: 2 },
+  statMod: { color: c.subtext, fontSize: 14, fontWeight: '600' },
+  statLabel: { color: c.subtext, fontSize: 11, marginTop: 2 },
 
   statModalOverlay: {
     flex: 1,
@@ -622,16 +662,16 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   statModalBox: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 20,
     width: '100%',
     borderWidth: 1,
-    borderColor: '#c9a84c55',
+    borderColor: c.border,
     gap: 10,
   },
   statModalTitle: {
-    color: '#e0c070',
+    color: c.text,
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -643,25 +683,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a4a',
+    borderBottomColor: c.border,
   },
   statModalTotal: {
     borderBottomWidth: 0,
     marginTop: 4,
   },
-  statModalLabel: { color: '#9090b0', fontSize: 14 },
-  statModalLabelBold: { color: '#e0e0ff', fontSize: 15, fontWeight: 'bold' },
-  statModalValue: { color: '#e0c070', fontSize: 14, fontWeight: '600' },
-  statModalValueBold: { color: '#e0c070', fontSize: 18, fontWeight: 'bold' },
+  statModalLabel: { color: c.subtext, fontSize: 14 },
+  statModalLabelBold: { color: c.text, fontSize: 15, fontWeight: 'bold' },
+  statModalValue: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  statModalValueBold: { color: c.accent, fontSize: 18, fontWeight: 'bold' },
   statModalHint: {
-    color: '#505060',
+    color: c.subtext,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 4,
   },
 
   spellCard: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 24,
@@ -674,7 +714,7 @@ const styles = StyleSheet.create({
   slotDots: { flexDirection: 'row', gap: 4, flex: 1 },
   slotDot: { width: 12, height: 12, borderRadius: 6 },
   slotDotFull: { backgroundColor: '#c090ff' },
-  slotDotEmpty: { backgroundColor: '#3a2a4a', borderWidth: 1, borderColor: '#6a5080' },
+  slotDotEmpty: { backgroundColor: c.bg, borderWidth: 1, borderColor: '#6a5080' },
   slotCount: { color: '#8a7090', fontSize: 12, width: 30, textAlign: 'right' },
   useSlotBtn: {
     backgroundColor: '#3a1a5a',
@@ -686,7 +726,7 @@ const styles = StyleSheet.create({
   useSlotBtnText: { color: '#c090ff', fontSize: 12, fontWeight: '600' },
 
   spellsBlock: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 16,
@@ -710,7 +750,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 5,
     paddingHorizontal: 8,
-    backgroundColor: '#15080088',
+    backgroundColor: c.bg + 'aa',
     borderRadius: 6,
     marginTop: 3,
   },
@@ -728,7 +768,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   spellMiniName: {
-    color: '#c9a84c',
+    color: c.accent,
     fontSize: 13,
     flex: 1,
   },
@@ -738,7 +778,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   spellMiniCast: {
-    color: '#6a5040',
+    color: c.subtext,
     fontSize: 11,
     fontStyle: 'italic',
   },
@@ -748,7 +788,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   noSpellsHint: {
-    color: '#5a4030',
+    color: c.subtext,
     fontSize: 11,
     fontStyle: 'italic',
     paddingLeft: 8,
@@ -756,30 +796,30 @@ const styles = StyleSheet.create({
   },
 
   actionBtn: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#c9a84c33',
+    borderColor: c.border,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  actionBtnText: { color: '#c9a84c', fontSize: 16, fontWeight: '600' },
-  actionBtnSub: { color: '#6a5040', fontSize: 12, marginTop: 2 },
+  actionBtnText: { color: c.accent, fontSize: 16, fontWeight: '600' },
+  actionBtnSub: { color: c.subtext, fontSize: 12, marginTop: 2 },
 
   grimoireCard: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#c9a84c33',
+    borderColor: c.border,
     gap: 12,
   },
   grimoireLvl: {
-    color: '#c9a84c',
+    color: c.accent,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -790,10 +830,11 @@ const styles = StyleSheet.create({
   grimoireRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   grimoireIcon: { fontSize: 16 },
   grimoireInfo: { flex: 1 },
-  grimoireName: { fontSize: 14, fontWeight: '600' },
-  grimoireMeta: { color: '#6a5040', fontSize: 11, marginTop: 1 },
+  grimoireName: { fontSize: 14, fontWeight: '600', color: c.text },
+  grimoireMeta: { color: c.subtext, fontSize: 11, marginTop: 1 },
 
   deleteBtn: {
+    backgroundColor: c.surface,
     borderWidth: 1,
     borderColor: '#ff404055',
     borderRadius: 12,
@@ -801,31 +842,31 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     alignItems: 'center',
   },
-  deleteBtnText: { color: '#ff4040', fontWeight: '600', fontSize: 15 },
+  deleteBtnText: { color: '#ff5555', fontWeight: '600', fontSize: 15 },
   levelUpBtn: {
-    backgroundColor: '#1a3a00',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#60c030',
+    borderColor: '#60c03066',
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,
     alignItems: 'center',
   },
-  levelUpBtnText: { color: '#80e040', fontWeight: '700', fontSize: 15 },
+  levelUpBtnText: { color: '#70e040', fontWeight: '700', fontSize: 15 },
 
   traitsBlock: {
     gap: 8,
     marginBottom: 24,
   },
   traitCard: {
-    backgroundColor: '#2d1a00',
+    backgroundColor: c.surface,
     borderRadius: 10,
     padding: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#c9a84c',
+    borderLeftColor: c.accent,
   },
   traitName: {
-    color: '#e0c070',
+    color: c.text,
     fontWeight: 'bold',
     fontSize: 14,
     marginBottom: 4,
@@ -833,7 +874,7 @@ const styles = StyleSheet.create({
   traitDesc: {
     fontSize: 12,
     lineHeight: 18,
-    color: '#907050',
+    color: c.subtext,
   },
 
   spellMiniRowUpcast: {

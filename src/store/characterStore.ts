@@ -44,6 +44,7 @@ interface CharacterStore {
   levelUp: (characterId: string, newTraits: string[]) => Promise<void>;
   useSorceryPoint: (characterId: string) => Promise<void>;
   recoverSorceryPoints: (characterId: string) => Promise<void>;
+  shortRest: (characterId: string, diceSpent: number, hpGained: number) => Promise<void>;
   /** Converte um spell slot em pontos de feitiçaria (slot nivel N → +N pontos) */
   convertSlotToPoints: (characterId: string, slotLevel: number) => Promise<void>;
   /** Cria um spell slot gastando pontos de feitiçaria */
@@ -180,10 +181,10 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     Object.entries(char.spellSlots).forEach(([lvl, slot]) => {
       recovered[Number(lvl)] = { ...slot, used: 0 };
     });
-    await supabase.from('characters').update({ spellSlots: recovered }).eq('id', characterId);
+    await supabase.from('characters').update({ spellSlots: recovered, hitDiceUsed: 0 }).eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
-        c.id === characterId ? { ...c, spellSlots: recovered } : c
+        c.id === characterId ? { ...c, spellSlots: recovered, hitDiceUsed: 0 } : c
       ),
     }));
   },
@@ -296,6 +297,29 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, sorceryPoints: recovered } : c
+      ),
+    }));
+  },
+
+  shortRest: async (characterId, diceSpent, hpGained) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const newHp = Math.min(char.maxHp, char.hp + hpGained);
+    const newHitDiceUsed = (char.hitDiceUsed ?? 0) + diceSpent;
+    // Warlock: recover pact magic slots on short rest
+    let spellSlots = char.spellSlots;
+    if (char.className === 'warlock') {
+      const recovered: Character['spellSlots'] = {};
+      Object.entries(char.spellSlots).forEach(([lvl, slot]) => {
+        recovered[Number(lvl)] = { ...slot, used: 0 };
+      });
+      spellSlots = recovered;
+    }
+    const patch = { hp: newHp, hitDiceUsed: newHitDiceUsed, spellSlots };
+    await supabase.from('characters').update(patch).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, ...patch } : c
       ),
     }));
   },
