@@ -73,6 +73,7 @@ export default function CharacterSheet() {
   };
 
   const handleCastSpell = (spellId: string, spellLevel: number, dmgStr: string | null) => {
+    if (!char) return;
     if (spellLevel > 0) {
       const slot = char.spellSlots[spellLevel];
       if (!slot || slot.used >= slot.total) {

@@ -10,6 +10,7 @@ import {
 import { useRouter, usePathname } from 'expo-router';
 import { useTabStore } from '../store/tabStore';
 import { useSettingsStore, THEMES } from '../store/settingsStore';
+import { useI18n } from '../lib/i18n';
 import SettingsModal from './SettingsModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,6 +20,7 @@ export default function TabBar() {
   const { openTabs, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const colors = THEMES[theme];
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -67,7 +69,7 @@ export default function TabBar() {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, { color: activeId === 'home' ? colors.accent : colors.subtext }]}>
-              ⚔️ Personagens
+              ⚔️ {t.yourChars}
             </Text>
           </TouchableOpacity>
 
