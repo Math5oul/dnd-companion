@@ -97,6 +97,9 @@ export interface CombatAction {
   featureActionId?: string;
   maxUses?: number;
   useType?: 'at_will' | 'short_rest' | 'long_rest';
+  effectTag?: string;
+  isToggle?: boolean;
+  kiCost?: number;
 
   // ── Referência a equipamento ────────────────────────────
   equipmentId?: string;

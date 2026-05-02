@@ -45,7 +45,7 @@ const translations = {
     shortRestRoll: '🎲 Gastar 1 Dado de Vida',
     shortRestHealResult: (roll: number, con: number, total: number) => `Rolou ${roll} + ${con >= 0 ? '+' + con : con} CON = +${total} HP`,
     shortRestNoDice: 'Sem dados de vida disponíveis.',
-    shortRestClose: 'Fechar',
+    shortRestClose: 'Confirmar Descanso',
     shortRestRecoverHint: 'Role dados de vida para recuperar HP. Warlock recupera spell slots.',
     // Spellbook
     spellbookTitle: (name: string) => `📖 Grimório de ${name}`,
@@ -166,7 +166,7 @@ const translations = {
     shortRestRoll: '🎲 Spend 1 Hit Die',
     shortRestHealResult: (roll: number, con: number, total: number) => `Rolled ${roll} + ${con >= 0 ? '+' + con : con} CON = +${total} HP`,
     shortRestNoDice: 'No hit dice available.',
-    shortRestClose: 'Close',
+    shortRestClose: 'Confirm Rest',
     shortRestRecoverHint: 'Roll hit dice to recover HP. Warlock recovers spell slots.',
     // Spellbook
     spellbookTitle: (name: string) => `📖 ${name}'s Spellbook`,

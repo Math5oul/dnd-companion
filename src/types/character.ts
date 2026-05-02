@@ -38,6 +38,8 @@ export interface Character {
   traits: string[];
   /** Pontos de Feitiçaria (Sorcerer) */
   sorceryPoints?: { total: number; used: number };
+  /** Pontos de Ki (Monk) */
+  kiPoints?: { total: number; used: number };
   /** Dados de Vida usados (Short Rest). Reseta no Long Rest. */
   hitDiceUsed?: number;
   /** IDs das perícias em que o personagem tem proficiência */

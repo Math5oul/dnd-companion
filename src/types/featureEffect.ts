@@ -16,6 +16,12 @@ export interface FeatureAction {
   damageDice?: string;
   damageType?: string;
   range?: string;
+  /** Tag de efeito persistente (ex: 'rage', 'ki_step') — usada para aplicar bônus automáticos */
+  effectTag?: string;
+  /** Se true, ativar funciona como toggle ON/OFF em vez de consumo único */
+  isToggle?: boolean;
+  /** Custo em pontos de ki ao ativar (gasta do pool de ki do monk) */
+  kiCost?: number;
 }
 
 /** Efeito declarativo de um trait/feature */

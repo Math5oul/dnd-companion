@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch } from 'react-native';
 import { useSettingsStore, THEMES } from '../store/settingsStore';
 import { useI18n } from '../lib/i18n';
 import { rollDie, getModifier } from '../lib/dice';
@@ -16,7 +16,7 @@ interface Props {
 export default function ShortRestModal({ visible, character, onCancel, onConfirm }: Props) {
   const { theme } = useSettingsStore();
   const c = THEMES[theme];
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   const cls = getClassById(character.className);
   const hitDie = cls?.hitDie ?? 8;
@@ -25,16 +25,20 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
   const usedBefore = character.hitDiceUsed ?? 0;
   const availableDice = totalDice - usedBefore;
 
+  const isWarlock = character.className === 'warlock';
+  const isMonk = character.className === 'monk';
+
   const [diceSpent, setDiceSpent] = useState(0);
   const [hpGained, setHpGained] = useState(0);
   const [rollLog, setRollLog] = useState<string[]>([]);
+  const [healMode, setHealMode] = useState(true);
 
   const handleSpendDie = () => {
     const diceLeft = availableDice - diceSpent;
     if (diceLeft <= 0) return;
-    const hpLeft = character.maxHp - character.hp - hpGained;
-    if (hpLeft <= 0) return;
     const roll = rollDie(hitDie);
+    const currentHp = character.hp + hpGained;
+    const hpLeft = character.maxHp - currentHp;
     const gain = Math.max(0, Math.min(roll + conMod, hpLeft));
     const logEntry = t.shortRestHealResult(roll, conMod, gain);
     setDiceSpent((d) => d + 1);
@@ -43,7 +47,7 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
   };
 
   const handleConfirm = () => {
-    onConfirm(diceSpent, hpGained);
+    onConfirm(healMode ? diceSpent : 0, healMode ? hpGained : 0);
     reset();
   };
 
@@ -56,10 +60,11 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
     setDiceSpent(0);
     setHpGained(0);
     setRollLog([]);
+    setHealMode(true);
   };
 
   const diceLeft = availableDice - diceSpent;
-  const hpFull = character.hp + hpGained >= character.maxHp;
+  const hpFull = character.hp >= character.maxHp;
 
   const styles = StyleSheet.create({
     backdrop: {
@@ -94,6 +99,7 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
     statRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      alignItems: 'center',
       marginBottom: 6,
     },
     statLabel: {
@@ -114,6 +120,31 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
       height: 1,
       backgroundColor: c.border,
       marginVertical: 12,
+    },
+    recoverBanner: {
+      backgroundColor: c.accent + '22',
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 10,
+      gap: 4,
+    },
+    recoverText: {
+      color: c.accent,
+      fontSize: 13,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+      paddingHorizontal: 4,
+    },
+    toggleLabel: {
+      color: c.text,
+      fontSize: 14,
+      fontWeight: '600',
     },
     spendBtn: {
       backgroundColor: c.accent,
@@ -172,44 +203,87 @@ export default function ShortRestModal({ visible, character, onCancel, onConfirm
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleCancel}>
         <TouchableOpacity activeOpacity={1} style={styles.box}>
           <Text style={styles.title}>{t.shortRestTitle}</Text>
-          <Text style={styles.hint}>{t.shortRestRecoverHint}</Text>
+          <Text style={styles.hint}>
+            {language === 'en'
+              ? 'Take a breather. Class features recover automatically.'
+              : 'Descanse um momento. Habilidades de classe recuperam automaticamente.'}
+          </Text>
 
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>{t.shortRestHitDie(hitDie)}</Text>
-            <Text style={styles.statValue}>
-              {conMod >= 0 ? `+${conMod}` : `${conMod}`} CON
+          {/* What recovers automatically */}
+          {(isWarlock || isMonk) && (
+            <View style={styles.recoverBanner}>
+              {isWarlock && (
+                <Text style={styles.recoverText}>
+                  🔮 {language === 'en' ? 'Pact Magic slots recover' : 'Slots de Magia do Pacto recuperam'}
+                </Text>
+              )}
+              {isMonk && (
+                <Text style={styles.recoverText}>
+                  🌀 {language === 'en'
+                    ? `Ki points recover (${character.kiPoints?.total ?? character.level}/${character.kiPoints?.total ?? character.level})`
+                    : `Pontos de Ki recuperam (${character.kiPoints?.total ?? character.level}/${character.kiPoints?.total ?? character.level})`}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Heal toggle */}
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>
+              {language === 'en' ? '❤️ Recover HP with Hit Dice' : '❤️ Recuperar HP com Dado de Vida'}
             </Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>{t.shortRestDice(usedBefore + diceSpent, totalDice)}</Text>
-            <Text style={styles.statValue}>{diceLeft} left</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>HP</Text>
-            <Text style={styles.hpGain}>
-              {character.hp + hpGained}/{character.maxHp}
-              {hpGained > 0 ? ` (+${hpGained})` : ''}
-            </Text>
+            <Switch
+              value={healMode}
+              onValueChange={setHealMode}
+              thumbColor={healMode ? c.accent : c.subtext}
+              trackColor={{ false: c.border, true: c.accent + '88' }}
+            />
           </View>
 
-          <View style={styles.divider} />
+          {healMode && (
+            <>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>{t.shortRestHitDie(hitDie)}</Text>
+                <Text style={styles.statValue}>
+                  {conMod >= 0 ? `+${conMod}` : `${conMod}`} CON
+                </Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>{t.shortRestDice(usedBefore + diceSpent, totalDice)}</Text>
+                <Text style={styles.statValue}>{diceLeft} {language === 'en' ? 'left' : 'restantes'}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>HP</Text>
+                <Text style={styles.hpGain}>
+                  {character.hp + hpGained}/{character.maxHp}
+                  {hpGained > 0 ? ` (+${hpGained})` : ''}
+                </Text>
+              </View>
 
-          <TouchableOpacity
-            style={[styles.spendBtn, (diceLeft <= 0 || hpFull) && styles.spendBtnDisabled]}
-            onPress={handleSpendDie}
-            disabled={diceLeft <= 0 || hpFull}
-          >
-            <Text style={styles.spendBtnText}>
-              {diceLeft <= 0 ? t.shortRestNoDice : t.shortRestRoll}
-            </Text>
-          </TouchableOpacity>
+              <View style={styles.divider} />
 
-          {rollLog.length > 0 && (
-            <ScrollView style={styles.logContainer}>
-              {rollLog.map((entry, i) => (
-                <Text key={i} style={styles.logEntry}>• {entry}</Text>
-              ))}
-            </ScrollView>
+              <TouchableOpacity
+                style={[styles.spendBtn, (diceLeft <= 0 || hpFull) && styles.spendBtnDisabled]}
+                onPress={handleSpendDie}
+                disabled={diceLeft <= 0 || hpFull}
+              >
+                <Text style={styles.spendBtnText}>
+                  {diceLeft <= 0
+                    ? t.shortRestNoDice
+                    : hpFull
+                      ? (language === 'en' ? '❤️ HP Full' : '❤️ HP Cheio')
+                      : t.shortRestRoll}
+                </Text>
+              </TouchableOpacity>
+
+              {rollLog.length > 0 && (
+                <ScrollView style={styles.logContainer}>
+                  {rollLog.map((entry, i) => (
+                    <Text key={i} style={styles.logEntry}>• {entry}</Text>
+                  ))}
+                </ScrollView>
+              )}
+            </>
           )}
 
           <View style={styles.actions}>

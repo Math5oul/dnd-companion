@@ -45,6 +45,8 @@ interface CharacterStore {
   levelUp: (characterId: string, newTraits: string[]) => Promise<void>;
   useSorceryPoint: (characterId: string) => Promise<void>;
   recoverSorceryPoints: (characterId: string) => Promise<void>;
+  useKiPoint: (characterId: string, amount?: number) => Promise<void>;
+  recoverKiPoints: (characterId: string) => Promise<void>;
   shortRest: (characterId: string, diceSpent: number, hpGained: number) => Promise<void>;
   /** Converte um spell slot em pontos de feitiçaria (slot nivel N → +N pontos) */
   convertSlotToPoints: (characterId: string, slotLevel: number) => Promise<void>;
@@ -176,6 +178,10 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       ...(draft.className === 'sorcerer' && draft.level >= 2
         ? { sorceryPoints: { total: draft.level, used: 0 } }
         : {}),
+      // Pontos de Ki: monk nível ≥ 2 começa com pontos = nível
+      ...(draft.className === 'monk' && draft.level >= 2
+        ? { kiPoints: { total: draft.level, used: 0 } }
+        : {}),
     };
 
     const { data, error } = await supabase
@@ -220,12 +226,13 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     Object.entries(char.spellSlots).forEach(([lvl, slot]) => {
       recovered[Number(lvl)] = { ...slot, used: 0 };
     });
-    await supabase.from('characters').update({ spellSlots: recovered, hitDiceUsed: 0 }).eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, spellSlots: recovered, hitDiceUsed: 0 } : c
       ),
     }));
+    const { error } = await supabase.from('characters').update({ spellSlots: recovered, hitDiceUsed: 0 }).eq('id', characterId);
+    if (error) console.warn('[recoverSpellSlots] Supabase error:', error.message);
   },
 
   updateHp: async (characterId, hp) => {
@@ -303,8 +310,19 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
         : undefined;
     }
 
+    // Pontos de Ki: monk nível ≥ 2 = total igual ao nível
+    let kiPoints = char.kiPoints;
+    if (char.className === 'monk') {
+      const newTotal = newLevel >= 2 ? newLevel : 0;
+      const usedSoFar = kiPoints?.used ?? 0;
+      kiPoints = newTotal > 0
+        ? { total: newTotal, used: Math.min(usedSoFar, newTotal) }
+        : undefined;
+    }
+
     const patch = { level: newLevel, maxHp: newMaxHp, hp: newHp, spellSlots, traits: mergedTraits,
-      ...(sorceryPoints !== undefined ? { sorceryPoints } : {}) };
+      ...(sorceryPoints !== undefined ? { sorceryPoints } : {}),
+      ...(kiPoints !== undefined ? { kiPoints } : {}) };
     const { error } = await supabase.from('characters').update(patch).eq('id', characterId);
     if (error) { console.error('Erro ao level up:', error.message); return; }
     set((s) => ({
@@ -332,12 +350,44 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const char = get().characters.find((c) => c.id === characterId);
     if (!char?.sorceryPoints) return;
     const recovered = { total: char.sorceryPoints.total, used: 0 };
-    await supabase.from('characters').update({ sorceryPoints: recovered }).eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, sorceryPoints: recovered } : c
       ),
     }));
+    const { error } = await supabase.from('characters').update({ sorceryPoints: recovered }).eq('id', characterId);
+    if (error) console.warn('[recoverSorceryPoints] Supabase error (run migration):', error.message);
+  },
+
+  useKiPoint: async (characterId, amount = 1) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char?.kiPoints) return;
+    const { total, used } = char.kiPoints;
+    if (used + amount > total) return;
+    const updated = { total, used: used + amount };
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, kiPoints: updated } : c
+      ),
+    }));
+    const { error } = await supabase.from('characters').update({ kiPoints: updated }).eq('id', characterId);
+    if (error) console.warn('[useKiPoint] Supabase error (run migration):', error.message);
+  },
+
+  recoverKiPoints: async (characterId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    // Initialize if not set (existing monk)
+    const total = char.kiPoints?.total ?? char.level;
+    const recovered = { total, used: 0 };
+    // Always update local state first
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, kiPoints: recovered } : c
+      ),
+    }));
+    const { error } = await supabase.from('characters').update({ kiPoints: recovered }).eq('id', characterId);
+    if (error) console.warn('[recoverKiPoints] Supabase error (run migration):', error.message);
   },
 
   shortRest: async (characterId, diceSpent, hpGained) => {
@@ -345,6 +395,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     if (!char) return;
     const newHp = Math.min(char.maxHp, char.hp + hpGained);
     const newHitDiceUsed = (char.hitDiceUsed ?? 0) + diceSpent;
+
     // Warlock: recover pact magic slots on short rest
     let spellSlots = char.spellSlots;
     if (char.className === 'warlock') {
@@ -354,13 +405,27 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       });
       spellSlots = recovered;
     }
-    const patch = { hp: newHp, hitDiceUsed: newHitDiceUsed, spellSlots };
-    await supabase.from('characters').update(patch).eq('id', characterId);
+
+    // Monk: recover all ki points on short rest
+    let kiPoints = char.kiPoints;
+    if (char.className === 'monk' && kiPoints) {
+      kiPoints = { total: kiPoints.total, used: 0 };
+    } else if (char.className === 'monk' && !kiPoints) {
+      // Initialize if not yet set
+      kiPoints = { total: char.level, used: 0 };
+    }
+
+    const patch: Record<string, unknown> = { hp: newHp, hitDiceUsed: newHitDiceUsed, spellSlots };
+    if (kiPoints !== char.kiPoints) patch.kiPoints = kiPoints;
+
+    // Update local state first
     set((s) => ({
       characters: s.characters.map((c) =>
-        c.id === characterId ? { ...c, ...patch } : c
+        c.id === characterId ? { ...c, ...patch, kiPoints: kiPoints ?? c.kiPoints } : c
       ),
     }));
+    const { error } = await supabase.from('characters').update(patch).eq('id', characterId);
+    if (error) console.warn('[shortRest] Supabase error:', error.message);
   },
 
   // Slot → Pontos: converte 1 slot usado/disponível em pontos (N pontos = nível do slot)
@@ -564,10 +629,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const updatedEffects = (char.activeEffects ?? []).filter(
       (e) => e.expiresOn !== 'long_rest'
     );
-    await supabase
-      .from('characters')
-      .update({ equipment: updatedEquipment, activeEffects: updatedEffects })
-      .eq('id', characterId);
+    // Update local state first
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId
@@ -575,6 +637,17 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
           : c
       ),
     }));
+    // Try patching activeEffects separately so a missing column doesn't block equipment update
+    const { error: e1 } = await supabase
+      .from('characters')
+      .update({ equipment: updatedEquipment })
+      .eq('id', characterId);
+    if (e1) console.warn('[clearLongRestItems] equipment error:', e1.message);
+    const { error: e2 } = await supabase
+      .from('characters')
+      .update({ activeEffects: updatedEffects })
+      .eq('id', characterId);
+    if (e2) console.warn('[clearLongRestItems] activeEffects error (run migration):', e2.message);
   },
 
   activateConsumable: async (characterId, itemId) => {
@@ -672,16 +745,16 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     // We just clear the map on long rest; on short rest we keep long_rest action uses.
     // Since we don't track types here, we pass the whole map to clear.
     if (resetType === 'long_rest') {
-      // Clear all action uses
-      await supabase.from('characters').update({ actionUses: {} }).eq('id', characterId);
+      // Clear all action uses — local state first
       set((s) => ({
         characters: s.characters.map((c) =>
           c.id === characterId ? { ...c, actionUses: {} } : c
         ),
       }));
+      const { error } = await supabase.from('characters').update({ actionUses: {} }).eq('id', characterId);
+      if (error) console.warn('[resetFeatureActions] Supabase error (run migration):', error.message);
     } else {
       // short_rest: only reset short_rest-typed keys
-      // We need FEATURE_EFFECTS to know types, so we import it
       const { FEATURE_EFFECTS } = await import('../data/featureEffects');
       const traits = char.traits ?? [];
       const shortRestActionIds = new Set<string>();
@@ -694,12 +767,13 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       }
       const updated = { ...(char.actionUses ?? {}) };
       for (const id of shortRestActionIds) delete updated[id];
-      await supabase.from('characters').update({ actionUses: updated }).eq('id', characterId);
       set((s) => ({
         characters: s.characters.map((c) =>
           c.id === characterId ? { ...c, actionUses: updated } : c
         ),
       }));
+      const { error } = await supabase.from('characters').update({ actionUses: updated }).eq('id', characterId);
+      if (error) console.warn('[resetFeatureActions] Supabase error (run migration):', error.message);
     }
   },
 

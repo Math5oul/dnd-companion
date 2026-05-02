@@ -28,6 +28,9 @@ import EquipmentModal from '../../src/components/EquipmentModal';
 import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src/data/classFeatures';
 import { getActiveFeatureActions } from '../../src/data/featureEffects';
 import CombatPanel from '../../src/components/CombatPanel';
+import ChecksPanel from '../../src/components/ChecksPanel';
+import SkillsChecksPanel from '../../src/components/SkillsChecksPanel';
+import CombatManeuvers from '../../src/components/CombatManeuvers';
 import { detectMetamagic, spellAttackBonus as calcSpellAttackBonus, spellSaveDC as calcSpellSaveDC, applyMetamagicToDamage, metamagicCost, getSpellTraitBonuses, traitBonusesForSpell } from '../../src/lib/metamagic';
 import { Equipment, EQUIPMENT_TYPE_ICONS, EQUIPMENT_TYPE_LABELS_PT, EQUIPMENT_TYPE_LABELS_EN, BONUS_TYPE_LABELS } from '../../src/types/equipment';
 
@@ -43,7 +46,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice } = useCharacterStore();
+  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, useKiPoint, recoverKiPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
@@ -73,6 +76,11 @@ export default function CharacterSheet() {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [spellsOpen, setSpellsOpen] = useState(false);
   const [combatOpen, setCombatOpen] = useState(false);
+  const [checksOpen, setChecksOpen] = useState(false);
+  const [manobraOpen, setManobraOpen] = useState(false);
+  const [activeTraitEffects, setActiveTraitEffects] = useState<Set<string>>(new Set());
+  const handleToggleTraitEffect = (tag: string) =>
+    setActiveTraitEffects(prev => { const n = new Set(prev); n.has(tag) ? n.delete(tag) : n.add(tag); return n; });
   const [equipModalOpen, setEquipModalOpen] = useState(false);
   const [editingEquip, setEditingEquip] = useState<Equipment | null>(null);
   const [deleteEquipId, setDeleteEquipId] = useState<string | null>(null);
@@ -483,107 +491,36 @@ export default function CharacterSheet() {
         );
       })()}
 
-      {/* Perícias / Skills */}
+      {/* ── Perícias & Testes (unified) ── */}
       {(() => {
-        const profBonus = getProficiencyBonus(char.level);
         const profs = char.skillProficiencies ?? [];
-        const classOptions = CLASS_SKILL_OPTIONS[char.className] ?? [];
         const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
-        // bard picks from all skills
-        const eligibleOptions = classOptions.length === 0
-          ? SKILLS.map((s) => s.id)
-          : classOptions;
         const remainingPicks = Math.max(0, maxPicks - profs.length);
-        const abilityShortKey: Record<string, keyof typeof t> = {
-          strength: 'strengthShort', dexterity: 'dexterityShort',
-          constitution: 'constitutionShort', intelligence: 'intelligenceShort',
-          wisdom: 'wisdomShort', charisma: 'charismaShort',
-        };
+        const profBonus = getProficiencyBonus(char.level);
         return (
           <>
-            {/* Header / Toggle drawer */}
             <TouchableOpacity style={styles.skillsHeader} onPress={() => setSkillsOpen((v) => !v)} activeOpacity={0.8}>
-              <Text style={styles.sectionTitle}>{t.skillsSection}</Text>
+              <Text style={styles.sectionTitle}>{language === 'en' ? '🎲 Skills & Checks' : '🎲 Perícias & Testes'}</Text>
               <View style={styles.skillsHeaderRight}>
                 {remainingPicks > 0 && (
                   <View style={styles.skillPicksBadge}>
-                    <Text style={styles.skillPicksBadgeText}>
-                      {t.skillPicksLeft(remainingPicks)}
-                    </Text>
+                    <Text style={styles.skillPicksBadgeText}>{t.skillPicksLeft(remainingPicks)}</Text>
                   </View>
                 )}
                 <Text style={styles.profBonusLabel}>{t.profBonusLabel(profBonus)}</Text>
                 <Text style={styles.skillDrawerToggle}>{skillsOpen ? '▲' : '▼'}</Text>
               </View>
             </TouchableOpacity>
-
-            {/* Drawer content */}
             {skillsOpen && (
-              <>
-                {remainingPicks > 0 && (
-                  <Text style={styles.skillHint}>{t.skillPickHint}</Text>
-                )}
-                <View style={styles.skillsBlock}>
-                  {SKILLS.map((skill) => {
-                    const abilityScore = char.abilityScores[skill.ability] + (asiTotals[skill.ability] ?? 0) + (equipBonuses[skill.ability] ?? 0);
-                    const abilityMod = Math.floor((abilityScore - 10) / 2);
-                    const isProficient = profs.includes(skill.id);
-                    const isEligible = eligibleOptions.includes(skill.id);
-                    const canPick = !isProficient && isEligible && remainingPicks > 0;
-                    const totalMod = abilityMod + (isProficient ? profBonus : 0);
-                    const roll = skillRolls[skill.id];
-                    const shortLabel = t[abilityShortKey[skill.ability]] as string;
-                    const skillName = language === 'en' ? skill.nameEn : skill.name;
-                    return (
-                      <TouchableOpacity
-                        key={skill.id}
-                        style={[
-                          styles.skillRow,
-                          roll && styles.skillRowActive,
-                          isProficient && styles.skillRowProficient,
-                        ]}
-                        onPress={() => handleSkillRoll(skill.id, totalMod)}
-                        activeOpacity={0.7}
-                      >
-                        {/* Dot — só aparece em skills elegíveis da classe */}
-                        {isEligible ? (
-                          isProficient ? (
-                            /* Já proficiente: dot cheio, não clicável */
-                            <View style={[styles.skillProfDot, styles.skillProfDotActive]} />
-                          ) : remainingPicks > 0 ? (
-                            /* Elegível + picks disponíveis: dot clicável */
-                            <TouchableOpacity
-                              onPress={() => addSkillProficiency(char.id, skill.id)}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <View style={[styles.skillProfDot, styles.skillProfDotPickable]} />
-                            </TouchableOpacity>
-                          ) : (
-                            /* Elegível mas sem picks restantes: dot vazio */
-                            <View style={styles.skillProfDot} />
-                          )
-                        ) : (
-                          /* Não elegível: espaço vazio */
-                          <View style={styles.skillProfDotPlaceholder} />
-                        )}
-                        <Text style={[styles.skillName, isProficient && styles.skillNameProficient]}>
-                          {skillName}
-                        </Text>
-                        <Text style={[styles.skillAbility, isProficient && styles.skillAbilityProficient]}>
-                          {shortLabel}
-                        </Text>
-                        {roll ? (
-                          <Text style={styles.skillRollResult}>{roll.total} {roll.detail}</Text>
-                        ) : (
-                          <Text style={[styles.skillMod, isProficient && styles.skillModProficient]}>
-                            {totalMod >= 0 ? `+${totalMod}` : `${totalMod}`}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
+              <SkillsChecksPanel
+                char={char}
+                language={language as 'pt' | 'en'}
+                themeColors={themeColors}
+                activeTraitEffects={activeTraitEffects}
+                asiTotals={asiTotals}
+                equipBonuses={equipBonuses}
+                onAddSkillProficiency={(skillId) => addSkillProficiency(char.id, skillId)}
+              />
             )}
           </>
         );
@@ -840,6 +777,8 @@ export default function CharacterSheet() {
             );
           })()}
 
+          {/* ── Ki Points (Monk) — moved outside spells section ── */}
+
           {/* Truques */}
           {(knownSpellsByLevel[0]?.length ?? 0) > 0 && (
             <View style={styles.spellsBlock}>
@@ -1078,6 +1017,48 @@ export default function CharacterSheet() {
         </>
       )}
 
+      {/* ── Ki Points (Monk) ── */}
+      {char.className === 'monk' && char.level >= 2 && (() => {
+        if (!char.kiPoints) {
+          return (
+            <View style={[styles.sorceryBlock, { marginHorizontal: 16, marginBottom: 12 }]}>
+              <Text style={styles.sorceryTitle}>🌀 {language === 'en' ? 'Ki Points' : 'Pontos de Ki'}</Text>
+              <TouchableOpacity style={styles.flexCastBtn} onPress={() => recoverKiPoints(char.id)}>
+                <Text style={styles.flexCastBtnText}>
+                  {language === 'en' ? '✨ Initialize Ki Points' : '✨ Inicializar Pontos de Ki'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
+        const { total, used } = char.kiPoints;
+        const available = total - used;
+        return (
+          <View style={[styles.sorceryBlock, { marginHorizontal: 16, marginBottom: 12 }]}>
+            <View style={styles.sorceryHeader}>
+              <Text style={styles.sorceryTitle}>🌀 {language === 'en' ? 'Ki Points' : 'Pontos de Ki'}</Text>
+              <Text style={styles.sorceryCount}>{available}/{total}</Text>
+            </View>
+            <View style={styles.sorceryDots}>
+              {Array.from({ length: total }).map((_, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => { if (i >= used) useKiPoint(char.id); }}
+                  activeOpacity={i >= used ? 0.7 : 1}
+                >
+                  <View style={[styles.sorceryDot, i < used ? styles.sorceryDotUsed : styles.sorceryDotFull]} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ color: themeColors.subtext, fontSize: 11, marginTop: 4, marginBottom: 6 }}>
+              {language === 'en'
+                ? 'Tap a dot to spend 1 ki. Recovers on short or long rest.'
+                : 'Toque um ponto para gastar 1 ki. Recupera em descanso curto ou longo.'}
+            </Text>
+          </View>
+        );
+      })()}
+
       {/* ── Painel de Combate Unificado ── */}
       <TouchableOpacity
         style={styles.drawerHeader}
@@ -1094,9 +1075,30 @@ export default function CharacterSheet() {
         units={units}
         themeColors={themeColors}
         actionUses={char.actionUses ?? {}}
+        activeTraitEffects={activeTraitEffects}
+        onToggleTraitEffect={handleToggleTraitEffect}
+        onSpendKi={(amount) => useKiPoint(char.id, amount)}
         onUseFeatureAction={(actionId, maxUses) => useFeatureAction(char.id, actionId, maxUses)}
         onUseCharge={(itemId) => useEquipmentCharge(char.id, itemId)}
       />
+      )}
+
+      {/* ── Manobras de Combate ── */}
+      <TouchableOpacity
+        style={styles.drawerHeader}
+        onPress={() => setManobraOpen(v => !v)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.sectionTitle}>{language === 'en' ? '⚔️ Combat Maneuvers' : '⚔️ Manobras de Combate'}</Text>
+        <Text style={styles.drawerToggleIcon}>{manobraOpen ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {manobraOpen && (
+        <CombatManeuvers
+          char={char}
+          language={language as 'pt' | 'en'}
+          themeColors={themeColors}
+          activeTraitEffects={activeTraitEffects}
+        />
       )}
 
       {/* ── Equipamentos + Inventário ── */}
@@ -1341,6 +1343,7 @@ export default function CharacterSheet() {
           recoverSpellSlots(char.id);
           updateHp(char.id, char.maxHp);
           recoverSorceryPoints(char.id);
+          recoverKiPoints(char.id);
           clearLongRestItems(char.id);
           resetFeatureActions(char.id, 'long_rest');
         }}

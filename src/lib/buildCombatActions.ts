@@ -239,6 +239,9 @@ export function buildCombatActions(char: Character): CombatAction[] {
         featureActionId: fa.id,
         maxUses: fa.maxUses,
         useType: fa.useType,
+        effectTag: fa.effectTag,
+        isToggle: fa.isToggle,
+        kiCost: fa.kiCost,
       });
     }
   } catch {

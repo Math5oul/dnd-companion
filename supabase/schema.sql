@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS characters (
   "spells"      JSONB NOT NULL DEFAULT '[]',
   "traits"         JSONB NOT NULL DEFAULT '[]',
   "sorceryPoints"  JSONB,
+  "kiPoints"       JSONB,
   "hitDiceUsed"    INTEGER NOT NULL DEFAULT 0,
   "skillProficiencies" JSONB NOT NULL DEFAULT '[]',
   "equipment"      JSONB NOT NULL DEFAULT '[]',
@@ -55,3 +56,5 @@ ALTER TABLE characters ADD COLUMN IF NOT EXISTS "activeEffects"      JSONB   NOT
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "asiChoices"         JSONB   NOT NULL DEFAULT '{}';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "actionUses"         JSONB   NOT NULL DEFAULT '{}';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "featureChoices"     JSONB   NOT NULL DEFAULT '{}';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "sorceryPoints"      JSONB;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "kiPoints"           JSONB;

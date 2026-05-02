@@ -52,15 +52,25 @@ interface Props {
   };
   onUseFeatureAction: (actionId: string, maxUses: number) => void;
   onUseCharge: (itemId: string) => void;
+  onToggleTraitEffect: (tag: string) => void;
+  onSpendKi?: (amount: number) => void;
   actionUses: Record<string, number>;
+  activeTraitEffects: Set<string>;
+}
+
+// ─── Rage damage bonus by level ───────────────────────────────────────────────
+function getRageDamageBonus(level: number): number {
+  if (level >= 16) return 4;
+  if (level >= 9) return 3;
+  return 2;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CombatPanel({
   char, language, units, themeColors: c,
-  onUseFeatureAction, onUseCharge,
-  actionUses,
+  onUseFeatureAction, onUseCharge, onToggleTraitEffect, onSpendKi,
+  actionUses, activeTraitEffects,
 }: Props) {
   const actions = useMemo(() => buildCombatActions(char), [char]);
 
@@ -89,11 +99,29 @@ export default function CombatPanel({
     const adv = getAdv(action.id);
     const res: RollResult = {};
 
-    // Feature-only (no attack roll, just effect/damage)
-    if (action.source === 'feature' && !action.attackBonus) {
-      if (action.featureActionId) {
-        onUseFeatureAction(action.featureActionId, action.maxUses ?? 0);
+    // Feature toggle actions (rage, ki_step, ki_dodge) — toggle ON/OFF
+    if (action.source === 'feature' && !action.attackBonus && action.featureActionId) {
+      const tag = (action as any).effectTag as string | undefined;
+      if (tag && (action as any).isToggle) {
+        const isActive = activeTraitEffects.has(tag);
+        if (!isActive) {
+          // Activating: spend a use + spend ki if required
+          onUseFeatureAction(action.featureActionId, action.maxUses ?? 0);
+          if (action.kiCost) onSpendKi?.(action.kiCost);
+        }
+        onToggleTraitEffect(tag);
+        const name = language === 'en' ? action.nameEn : action.namePt;
+        const wasActive = isActive;
+        res.label = wasActive
+          ? (language === 'en' ? `❌ ${name} deactivated` : `❌ ${name} desativada`)
+          : (language === 'en' ? `✅ ${name} activated` : `✅ ${name} ativada`);
+        setResults((s) => ({ ...s, [action.id]: res }));
+        clearResult(action.id);
+        return;
       }
+      // Non-toggle feature: normal activation
+      onUseFeatureAction(action.featureActionId, action.maxUses ?? 0);
+      if (action.kiCost) onSpendKi?.(action.kiCost);
       if (action.damage) {
         const dmgR = rollDamage(action.damage);
         res.label = `${language === 'en' ? action.nameEn : action.namePt}: ${dmgR.total} [${dmgR.detail}]`;
@@ -122,6 +150,16 @@ export default function CombatPanel({
       if (mod.attackBonus) totalAttackBonus += mod.attackBonus;
       if (mod.damageBonus) totalDamageBonus += mod.damageBonus;
       if (mod.damageExtra) extraDice += (extraDice ? '+' : '') + mod.damageExtra;
+    }
+
+    // Rage bonus damage on melee STR weapon attacks
+    if (
+      activeTraitEffects.has('rage') &&
+      (action.source === 'weapon' || action.source === 'basic') &&
+      action.tags.includes('melee') &&
+      action.tags.includes('str')
+    ) {
+      totalDamageBonus += getRageDamageBonus(char.level);
     }
 
     const hit = d20Result.value + totalAttackBonus;
@@ -173,20 +211,34 @@ export default function CombatPanel({
     const result = results[action.id];
     const isExpanded = expanded[action.id] ?? false;
 
+    // Check if this action has an active toggle effect
+    const effectTag = (action as any).effectTag as string | undefined;
+    const isToggle = (action as any).isToggle as boolean | undefined;
+    const isEffectActive = effectTag ? activeTraitEffects.has(effectTag) : false;
+
     // Feature use tracking
     const remaining = action.featureActionId
       ? (actionUses[action.featureActionId] ?? action.maxUses ?? null)
       : null;
     const isAtWill = action.useType === 'at_will';
-    const featureExhausted = !isAtWill && remaining !== null && action.maxUses !== undefined && remaining <= 0;
+    const featureExhausted = !isAtWill && remaining !== null && action.maxUses !== undefined && remaining <= 0 && !isEffectActive;
     const chargeExhausted = action.consumeCharge && (action.charges ?? 0) <= 0;
     const exhausted = featureExhausted || chargeExhausted;
 
     const costInfo = ACTION_COST_LABEL[action.actionCost];
-    const srcColor = SOURCE_COLOR[action.source];
+    const srcColor = isEffectActive ? '#44ff66' : SOURCE_COLOR[action.source];
 
     return (
-      <View key={action.id} style={[s.card(c), exhausted && { opacity: 0.5 }]}>
+      <View key={action.id} style={[s.card(c), exhausted && { opacity: 0.5 }, isEffectActive && { borderColor: '#44ff6688', borderWidth: 2 }]}>
+        {/* Active trait effect indicator */}
+        {isEffectActive && (
+          <View style={{ backgroundColor: '#44ff6622', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6, alignSelf: 'flex-start' }}>
+            <Text style={{ color: '#44ff66', fontSize: 11, fontWeight: '700' }}>
+              ⚡ {language === 'en' ? 'ACTIVE' : 'ATIVA'}
+              {effectTag === 'rage' ? `  +${getRageDamageBonus(char.level)} dano corpo-a-corpo` : ''}
+            </Text>
+          </View>
+        )}
         {/* Header row */}
         <View style={s.cardHeader}>
           <Text style={s.cardIcon}>{action.icon}</Text>
@@ -287,16 +339,20 @@ export default function CombatPanel({
 
           {/* Roll button */}
           <TouchableOpacity
-            style={[s.rollBtn(c), exhausted && s.rollBtnDisabled(c)]}
-            onPress={() => { if (!exhausted) handleRoll(action); }}
+            style={[s.rollBtn(c), exhausted && s.rollBtnDisabled(c), isEffectActive && { backgroundColor: '#cc3333' }]}
+            onPress={() => { if (!exhausted || isEffectActive) handleRoll(action); }}
             activeOpacity={0.7}
           >
             <Text style={s.rollBtnText(c)}>
-              🎲 {exhausted
-                ? (language === 'en' ? 'Exhausted' : 'Esgotado')
-                : action.featureActionId && !action.attackBonus
-                  ? (language === 'en' ? 'Activate' : 'Ativar')
-                  : (language === 'en' ? 'Roll' : 'Rolar')}
+              {isToggle && isEffectActive
+                ? (language === 'en' ? '❌ Deactivate' : '❌ Desativar')
+                : exhausted
+                  ? (language === 'en' ? 'Exhausted' : 'Esgotado')
+                  : isToggle
+                    ? (language === 'en' ? '✅ Activate' : '✅ Ativar')
+                    : action.featureActionId && !action.attackBonus
+                      ? (language === 'en' ? 'Activate' : 'Ativar')
+                      : `🎲 ${language === 'en' ? 'Roll' : 'Rolar'}`}
             </Text>
           </TouchableOpacity>
         </View>
