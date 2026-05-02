@@ -48,6 +48,19 @@ export interface Character {
   activeEffects?: ActiveEffect[];
   /** Moedas de ouro do personagem */
   gold?: number;
+  /** Bônus de ASI escolhidos manualmente por feature */
+  asiChoices?: Record<string, Partial<Record<AbilityName, number>>>;
+  /**
+   * Usos restantes de ações de features (ex: Rage, Bardic Inspiration).
+   * Chave = FeatureAction.id. Valor = usos restantes.
+   * -1 = nunca inicializado (usa maxUses como default).
+   */
+  actionUses?: Record<string, number>;
+  /**
+   * Escolhas feitas em features com pickSkills/pickType.
+   * Chave = ClassFeature.id. Valor = array de skill IDs escolhidos.
+   */
+  featureChoices?: Record<string, string[]>;
   createdAt: string;
   updatedAt: string;
 }

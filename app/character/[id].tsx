@@ -26,6 +26,7 @@ import LevelUpModal from '../../src/components/LevelUpModal';
 import ShortRestModal from '../../src/components/ShortRestModal';
 import EquipmentModal from '../../src/components/EquipmentModal';
 import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src/data/classFeatures';
+import { getActiveFeatureActions } from '../../src/data/featureEffects';
 import { Equipment, EQUIPMENT_TYPE_ICONS, EQUIPMENT_TYPE_LABELS_PT, EQUIPMENT_TYPE_LABELS_EN, BONUS_TYPE_LABELS } from '../../src/types/equipment';
 
 const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
@@ -40,7 +41,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold } = useCharacterStore();
+  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
@@ -75,7 +76,14 @@ export default function CharacterSheet() {
   const [healToast, setHealToast] = useState<{ text: string } | null>(null);
   const [goldModalOpen, setGoldModalOpen] = useState(false);
   const [goldInput, setGoldInput] = useState('');
-
+  const [featurePickerModal, setFeaturePickerModal] = useState<{
+    featureId: string;
+    featureName: string;
+    pickSkills: string[];
+    pickCount: number;
+    pickType: 'proficiency' | 'expertise';
+    pending: string[];
+  } | null>(null);
   // { spellId -> { total, detail, expires } }
   const [rollResults, setRollResults] = useState<Record<string, { total: number; detail: string }>>({});
   // skill roll results { skillId -> { total, detail } }
@@ -163,7 +171,7 @@ export default function CharacterSheet() {
   }, [char?.spells, char?.spellSlots]);
 
   // Bonus de atributos acumulado por ASIs (escolhas de nível)
-  const asiTotals = useMemo(() => computeAsiTotals(char?.traits ?? []), [char?.traits]);
+  const asiTotals = useMemo(() => computeAsiTotals(char?.traits ?? [], char?.asiChoices), [char?.traits, char?.asiChoices]);
 
   // Bonus de atributos de itens equipados
   const equipBonuses = useMemo(() => {
@@ -515,10 +523,125 @@ export default function CharacterSheet() {
                 {(char.traits ?? []).map((tid) => {
                   const info = traitMap[tid];
                   if (!info) return null;
+                  // Detect ASI features: their ID contains '_asi' and they belong to a parent feature with options
+                  const parentFeature = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features)
+                    .find((f) => f.options?.some((o) => o.id === tid));
+                  // Only show ASI editor for straight ability-score increases (no feat), not for feats like Lucky, Tough, GWM, etc.
+                  const isAsiFeature = parentFeature && parentFeature.id.includes('_asi') && !tid.includes('_feat_');
+                  const featureId = parentFeature?.id ?? tid;
+                  const currentChoices = (char.asiChoices ?? {})[featureId] ?? {};
+
+                  // Detect skill-pick features (proficiency or expertise)
+                  const directFeature = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features)
+                    .find((f) => f.id === tid);
+                  const isSkillPickFeature = !!directFeature?.pickSkills;
+                  const pickedSkills = (char.featureChoices ?? {})[tid] ?? [];
+                  const pointsUsed = Object.values(currentChoices).reduce((s, v) => s + (v ?? 0), 0);
+                  const ABILITIES_ASI: { key: AbilityName; short: string }[] = [
+                    { key: 'strength', short: language === 'en' ? 'STR' : 'FOR' },
+                    { key: 'dexterity', short: language === 'en' ? 'DEX' : 'DES' },
+                    { key: 'constitution', short: language === 'en' ? 'CON' : 'CON' },
+                    { key: 'intelligence', short: language === 'en' ? 'INT' : 'INT' },
+                    { key: 'wisdom', short: language === 'en' ? 'WIS' : 'SAB' },
+                    { key: 'charisma', short: language === 'en' ? 'CHA' : 'CAR' },
+                  ];
                   return (
                     <View key={tid} style={styles.traitCard}>
                       <Text style={styles.traitName}>{localizeFeatureName(tid, info.name, language)}</Text>
                       <Text style={styles.traitDesc}>{localizeFeatureDesc(tid, convertTextDistances(info.description, units, language), language)}</Text>
+                      {isAsiFeature && (
+                        <View style={styles.asiEditor}>
+                          <View style={styles.asiEditorHeader}>
+                            <Text style={styles.asiEditorTitle}>
+                              {language === 'en' ? '⚡ Assign Bonuses' : '⚡ Distribuir Bônus'}
+                            </Text>
+                            <Text style={[styles.asiEditorPoints, pointsUsed > 2 && { color: '#ff4444' }]}>
+                              {pointsUsed}/2 {language === 'en' ? 'pts' : 'pts'}
+                            </Text>
+                          </View>
+                          <View style={styles.asiEditorGrid}>
+                            {ABILITIES_ASI.map(({ key, short }) => {
+                              const val = currentChoices[key] ?? 0;
+                              return (
+                                <View key={key} style={styles.asiStatCell}>
+                                  <Text style={styles.asiStatLabel}>{short}</Text>
+                                  <View style={styles.asiStatRow}>
+                                    <TouchableOpacity
+                                      style={[styles.asiBtn, val <= 0 && styles.asiBtnDisabled]}
+                                      onPress={() => {
+                                        if (val <= 0) return;
+                                        const updated = { ...currentChoices, [key]: val - 1 };
+                                        if (updated[key] === 0) delete updated[key];
+                                        updateAsiChoice(char.id, featureId, updated);
+                                      }}
+                                    >
+                                      <Text style={styles.asiBtnText}>−</Text>
+                                    </TouchableOpacity>
+                                    <Text style={[styles.asiStatVal, val > 0 && { color: themeColors.accent }]}>
+                                      {val > 0 ? `+${val}` : '0'}
+                                    </Text>
+                                    <TouchableOpacity
+                                      style={[styles.asiBtn, pointsUsed >= 2 && styles.asiBtnDisabled]}
+                                      onPress={() => {
+                                        if (pointsUsed >= 2) return;
+                                        const updated = { ...currentChoices, [key]: val + 1 };
+                                        updateAsiChoice(char.id, featureId, updated);
+                                      }}
+                                    >
+                                      <Text style={styles.asiBtnText}>+</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
+                      {isSkillPickFeature && (() => {
+                        const pickCount = directFeature!.pickCount ?? 1;
+                        const pickType = directFeature!.pickType ?? 'proficiency';
+                        const label = pickType === 'expertise'
+                          ? (language === 'en' ? '🎯 Expertise' : '🎯 Especialização')
+                          : (language === 'en' ? '📖 Proficiency Choice' : '📖 Escolha de Proficiência');
+                        const skillNames = pickedSkills.map((sid) => {
+                          const sk = SKILLS.find((s) => s.id === sid);
+                          return sk ? (language === 'en' ? sk.nameEn : sk.name) : sid;
+                        });
+                        return (
+                          <View style={styles.featurePickRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.featurePickLabel}>{label}</Text>
+                              {pickedSkills.length > 0 ? (
+                                <Text style={styles.featurePickValue}>{skillNames.join(', ')}</Text>
+                              ) : (
+                                <Text style={styles.featurePickEmpty}>
+                                  {language === 'en' ? `Pick ${pickCount} skill${pickCount > 1 ? 's' : ''}` : `Escolha ${pickCount} habilidade${pickCount > 1 ? 's' : ''}`}
+                                </Text>
+                              )}
+                            </View>
+                            <TouchableOpacity
+                              style={styles.featurePickBtn}
+                              onPress={() => {
+                                const availableSkills = pickType === 'expertise'
+                                  ? (char.skillProficiencies ?? [])
+                                  : (directFeature!.pickSkills!.length > 0 ? directFeature!.pickSkills! : (char.skillProficiencies ?? []));
+                                setFeaturePickerModal({
+                                  featureId: tid,
+                                  featureName: language === 'en' ? info.name : localizeFeatureName(tid, info.name, language),
+                                  pickSkills: availableSkills,
+                                  pickCount,
+                                  pickType,
+                                  pending: [...pickedSkills],
+                                });
+                              }}
+                            >
+                              <Text style={styles.featurePickBtnText}>
+                                {pickedSkills.length > 0 ? (language === 'en' ? 'Edit' : 'Editar') : (language === 'en' ? 'Choose' : 'Escolher')}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })()}
                     </View>
                   );
                 })}
@@ -733,6 +856,78 @@ export default function CharacterSheet() {
           )}
         </>
       )}
+
+      {/* ── Ações de Features ── */}
+      {(() => {
+        const activeActions = getActiveFeatureActions(char.traits ?? []);
+        if (activeActions.length === 0) return null;
+        const actionUses = char.actionUses ?? {};
+        return (
+          <>
+            <Text style={styles.sectionTitle}>{language === 'en' ? '⚡ Feature Actions' : '⚡ Ações de Traits'}</Text>
+            <View style={{ gap: 8, marginBottom: 16 }}>
+              {activeActions.map((action) => {
+                const remaining = actionUses[action.id] ?? action.maxUses ?? null;
+                const isAtWill = action.useType === 'at_will';
+                const exhausted = !isAtWill && remaining !== null && remaining <= 0;
+                const maxUses = action.maxUses ?? 0;
+                return (
+                  <View key={action.id} style={[styles.featureActionCard, exhausted && styles.featureActionCardExhausted]}>
+                    <View style={styles.featureActionHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.featureActionName}>{language === 'en' ? action.nameEn : action.namePt}</Text>
+                        <Text style={styles.featureActionDesc}>{language === 'en' ? action.descEn : action.descPt}</Text>
+                        {action.damageDice && (
+                          <Text style={styles.featureActionDice}>🎲 {action.damageDice}{action.damageType ? ` ${translateDamageType(action.damageType, language)}` : ''}</Text>
+                        )}
+                      </View>
+                      <View style={styles.featureActionRight}>
+                        {/* Pips for limited-use actions */}
+                        {!isAtWill && maxUses > 0 && (
+                          <View style={styles.featureActionPips}>
+                            {Array.from({ length: maxUses }).map((_, i) => (
+                              <View
+                                key={i}
+                                style={[
+                                  styles.featureActionPip,
+                                  i < (remaining ?? maxUses) ? styles.featureActionPipFull : styles.featureActionPipEmpty,
+                                ]}
+                              />
+                            ))}
+                          </View>
+                        )}
+                        {isAtWill && (
+                          <Text style={styles.featureActionAtWill}>∞</Text>
+                        )}
+                        <TouchableOpacity
+                          style={[styles.featureActionBtn, exhausted && styles.featureActionBtnDisabled]}
+                          onPress={() => {
+                            if (exhausted) return;
+                            if (!isAtWill) {
+                              useFeatureAction(char.id, action.id, maxUses);
+                            }
+                            if (action.damageDice) {
+                              const result = rollDamage(action.damageDice);
+                              setHealToast({ text: `${language === 'en' ? action.nameEn : action.namePt}: ${result.total} [${result.detail}]` });
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.featureActionBtnText}>
+                            {exhausted
+                              ? (language === 'en' ? 'Used' : 'Usado')
+                              : (language === 'en' ? 'Use' : 'Usar')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        );
+      })()}
 
       {/* ── Equipamentos + Inventário ── */}
       {(() => {
@@ -1012,6 +1207,7 @@ export default function CharacterSheet() {
           updateHp(char.id, char.maxHp);
           recoverSorceryPoints(char.id);
           clearLongRestItems(char.id);
+          resetFeatureActions(char.id, 'long_rest');
         }}
       />
       <ShortRestModal
@@ -1021,6 +1217,7 @@ export default function CharacterSheet() {
         onConfirm={(diceSpent, hpGained) => {
           setModal(null);
           shortRest(char.id, diceSpent, hpGained);
+          resetFeatureActions(char.id, 'short_rest');
         }}
       />
       <ConfirmModal
@@ -1104,6 +1301,73 @@ export default function CharacterSheet() {
                 }}
               >
                 <Text style={styles.goldConfirmBtnText}>{language === 'en' ? 'Apply' : 'Aplicar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Feature skill picker modal */}
+      <Modal visible={featurePickerModal !== null} transparent animationType="slide">
+        <View style={styles.goldModalOverlay}>
+          <View style={[styles.goldModalBox, { maxHeight: '80%' }]}>
+            <Text style={[styles.goldModalTitle, { fontSize: 16, color: themeColors.accent }]}>
+              {featurePickerModal?.featureName}
+            </Text>
+            <Text style={[styles.goldModalHint, { marginBottom: 12 }]}>
+              {featurePickerModal?.pickType === 'expertise'
+                ? (language === 'en'
+                  ? `Choose ${featurePickerModal.pickCount} skill${featurePickerModal.pickCount > 1 ? 's' : ''} to gain expertise (double proficiency bonus)`
+                  : `Escolha ${featurePickerModal!.pickCount} habilidade${featurePickerModal!.pickCount > 1 ? 's' : ''} para ter expertise (dobrar bônus de proficiência)`)
+                : (language === 'en'
+                  ? `Choose ${featurePickerModal?.pickCount} skill${(featurePickerModal?.pickCount ?? 1) > 1 ? 's' : ''} to gain proficiency`
+                  : `Escolha ${featurePickerModal?.pickCount} habilidade${(featurePickerModal?.pickCount ?? 1) > 1 ? 's' : ''} para ganhar proficiência`)}
+            </Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {(featurePickerModal?.pickSkills ?? []).map((sid) => {
+                const sk = SKILLS.find((s) => s.id === sid);
+                if (!sk) return null;
+                const chosen = featurePickerModal?.pending.includes(sid) ?? false;
+                const atLimit = (featurePickerModal?.pending.length ?? 0) >= (featurePickerModal?.pickCount ?? 1);
+                return (
+                  <TouchableOpacity
+                    key={sid}
+                    style={[styles.featurePickSkillRow, chosen && styles.featurePickSkillRowActive]}
+                    onPress={() => {
+                      if (!featurePickerModal) return;
+                      let next: string[];
+                      if (chosen) {
+                        next = featurePickerModal.pending.filter((x) => x !== sid);
+                      } else if (!atLimit) {
+                        next = [...featurePickerModal.pending, sid];
+                      } else {
+                        return;
+                      }
+                      setFeaturePickerModal({ ...featurePickerModal, pending: next });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.featurePickSkillText, chosen && { color: themeColors.accent, fontWeight: '700' }]}>
+                      {chosen ? '✓ ' : '  '}{language === 'en' ? sk.nameEn : sk.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.goldModalActions}>
+              <TouchableOpacity style={styles.goldCancelBtn} onPress={() => setFeaturePickerModal(null)}>
+                <Text style={styles.goldCancelBtnText}>{language === 'en' ? 'Cancel' : 'Cancelar'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.goldConfirmBtn, { opacity: (featurePickerModal?.pending.length ?? 0) < (featurePickerModal?.pickCount ?? 1) ? 0.5 : 1 }]}
+                onPress={() => {
+                  if (!featurePickerModal) return;
+                  if (featurePickerModal.pending.length < featurePickerModal.pickCount) return;
+                  saveFeatureChoice(char.id, featurePickerModal.featureId, featurePickerModal.pending);
+                  setFeaturePickerModal(null);
+                }}
+              >
+                <Text style={styles.goldConfirmBtnText}>{language === 'en' ? 'Confirm' : 'Confirmar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1449,6 +1713,47 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     lineHeight: 18,
     color: c.subtext,
   },
+
+  // ── ASI inline editor ─────────────────────────────────────────────────────
+  asiEditor: {
+    marginTop: 10,
+    backgroundColor: c.bg,
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: c.accent + '44',
+  },
+  asiEditorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  asiEditorTitle: { color: c.accent, fontSize: 12, fontWeight: '700' },
+  asiEditorPoints: { color: c.subtext, fontSize: 12, fontWeight: '600' },
+  asiEditorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  asiStatCell: {
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  asiStatLabel: { color: c.subtext, fontSize: 10, fontWeight: '600', marginBottom: 4 },
+  asiStatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  asiBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: c.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  asiBtnDisabled: { borderColor: c.border, opacity: 0.4 },
+  asiBtnText: { color: c.accent, fontSize: 14, fontWeight: '700', lineHeight: 16 },
+  asiStatVal: { color: c.text, fontSize: 13, fontWeight: '700', minWidth: 22, textAlign: 'center' },
 
   spellMiniRowUpcast: {
     borderLeftWidth: 2,
@@ -1920,4 +2225,112 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     alignItems: 'center',
   },
   goldConfirmBtnText: { color: '#1a1000', fontSize: 15, fontWeight: '900' },
+
+  // Feature skill picker
+  featurePickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: c.border,
+    gap: 8,
+  },
+  featurePickLabel: { color: c.accent, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  featurePickValue: { color: c.text, fontSize: 13, fontWeight: '600', marginTop: 2 },
+  featurePickEmpty: { color: c.subtext, fontSize: 13, fontStyle: 'italic', marginTop: 2 },
+  featurePickBtn: {
+    backgroundColor: c.accent,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  featurePickBtnText: { color: c.bg, fontSize: 13, fontWeight: '700' },
+  featurePickSkillRow: {
+    paddingVertical: 11,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+  },
+  featurePickSkillRowActive: {
+    backgroundColor: c.accent + '22',
+    borderRadius: 6,
+  },
+  featurePickSkillText: { color: c.text, fontSize: 15 },
+
+  featureActionCard: {
+    backgroundColor: c.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.border,
+    padding: 12,
+    marginBottom: 8,
+  },
+  featureActionCardExhausted: {
+    opacity: 0.5,
+  },
+  featureActionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  featureActionName: {
+    color: c.text,
+    fontSize: 14,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  featureActionDesc: {
+    color: c.subtext,
+    fontSize: 12,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+  featureActionDice: {
+    color: c.accent,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  featureActionRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+    flexShrink: 0,
+  },
+  featureActionPips: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  featureActionPip: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  featureActionPipFull: {
+    backgroundColor: c.accent,
+  },
+  featureActionPipEmpty: {
+    backgroundColor: c.border,
+  },
+  featureActionAtWill: {
+    color: c.accent,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  featureActionBtn: {
+    backgroundColor: c.accent,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  featureActionBtnDisabled: {
+    backgroundColor: c.border,
+  },
+  featureActionBtnText: {
+    color: c.bg,
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

@@ -76,6 +76,14 @@ interface CharacterStore {
   activateConsumable: (characterId: string, itemId: string) => Promise<void>;
   /** Atualiza as moedas de ouro do personagem (delta positivo ou negativo) */
   updateGold: (characterId: string, delta: number) => Promise<void>;
+  /** Salva a escolha de ASI para uma feature (ex: { strength: 2 }) */
+  updateAsiChoice: (characterId: string, featureId: string, bonuses: Partial<Record<string, number>>) => Promise<void>;
+  /** Usa uma ação de feature (decrementa usos) */
+  useFeatureAction: (characterId: string, actionId: string, maxUses: number) => Promise<void>;
+  /** Reseta usos de ações por tipo de descanso */
+  resetFeatureActions: (characterId: string, resetType: 'short_rest' | 'long_rest') => Promise<void>;
+  /** Salva as skills escolhidas para uma feature com pickSkills, e aplica proficiência se pickType=proficiency */
+  saveFeatureChoice: (characterId: string, featureId: string, skillIds: string[]) => Promise<void>;
   /**
    * Remove itens com duration === 'long_rest' do inventário (chamado no Long Rest).
    */
@@ -623,6 +631,104 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, gold: newGold } : c
+      ),
+    }));
+  },
+
+  updateAsiChoice: async (characterId, featureId, bonuses) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const newChoices = { ...(char.asiChoices ?? {}), [featureId]: bonuses };
+    await supabase.from('characters').update({ asiChoices: newChoices }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, asiChoices: newChoices } : c
+      ),
+    }));
+  },
+
+  useFeatureAction: async (characterId, actionId, maxUses) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.actionUses?.[actionId] ?? maxUses;
+    if (current <= 0) return;
+    const newUses = { ...(char.actionUses ?? {}), [actionId]: current - 1 };
+    await supabase.from('characters').update({ actionUses: newUses }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, actionUses: newUses } : c
+      ),
+    }));
+  },
+
+  resetFeatureActions: async (characterId, resetType) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    // On long rest, reset ALL. On short rest, reset short_rest actions.
+    // We store the full actionUses map and clear the relevant keys.
+    // For simplicity: long_rest resets everything; short_rest resets short_rest-typed actions.
+    // The caller (shortRest/longRest) knows which to call.
+    const newUses: Record<string, number> = {};
+    // We just clear the map on long rest; on short rest we keep long_rest action uses.
+    // Since we don't track types here, we pass the whole map to clear.
+    if (resetType === 'long_rest') {
+      // Clear all action uses
+      await supabase.from('characters').update({ actionUses: {} }).eq('id', characterId);
+      set((s) => ({
+        characters: s.characters.map((c) =>
+          c.id === characterId ? { ...c, actionUses: {} } : c
+        ),
+      }));
+    } else {
+      // short_rest: only reset short_rest-typed keys
+      // We need FEATURE_EFFECTS to know types, so we import it
+      const { FEATURE_EFFECTS } = await import('../data/featureEffects');
+      const traits = char.traits ?? [];
+      const shortRestActionIds = new Set<string>();
+      for (const tid of traits) {
+        const fx = FEATURE_EFFECTS[tid];
+        if (!fx?.actions) continue;
+        for (const a of fx.actions) {
+          if (a.useType === 'short_rest') shortRestActionIds.add(a.id);
+        }
+      }
+      const updated = { ...(char.actionUses ?? {}) };
+      for (const id of shortRestActionIds) delete updated[id];
+      await supabase.from('characters').update({ actionUses: updated }).eq('id', characterId);
+      set((s) => ({
+        characters: s.characters.map((c) =>
+          c.id === characterId ? { ...c, actionUses: updated } : c
+        ),
+      }));
+    }
+  },
+
+  saveFeatureChoice: async (characterId, featureId, skillIds) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updatedChoices = { ...(char.featureChoices ?? {}), [featureId]: skillIds };
+    // Also apply proficiency for proficiency-type picks
+    const { CLASS_FEATURES } = await import('../data/classFeatures');
+    const allFeatures = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features);
+    const feature = allFeatures.find((f) => f.id === featureId);
+    let updatedProfs = [...(char.skillProficiencies ?? [])];
+    if (feature?.pickType === 'proficiency') {
+      // Remove old choices for this feature, then add new ones
+      const old = char.featureChoices?.[featureId] ?? [];
+      updatedProfs = updatedProfs.filter((s) => !old.includes(s));
+      for (const sid of skillIds) {
+        if (!updatedProfs.includes(sid)) updatedProfs.push(sid);
+      }
+    }
+    await supabase.from('characters').update({
+      featureChoices: updatedChoices,
+      skillProficiencies: updatedProfs,
+    }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId
+          ? { ...c, featureChoices: updatedChoices, skillProficiencies: updatedProfs }
+          : c
       ),
     }));
   },

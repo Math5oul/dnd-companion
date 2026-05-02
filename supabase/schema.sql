@@ -52,3 +52,6 @@ ALTER TABLE characters ADD COLUMN IF NOT EXISTS "skillProficiencies" JSONB   NOT
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "equipment"          JSONB   NOT NULL DEFAULT '[]';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "gold"               INTEGER NOT NULL DEFAULT 40;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "activeEffects"      JSONB   NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "asiChoices"         JSONB   NOT NULL DEFAULT '{}';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "actionUses"         JSONB   NOT NULL DEFAULT '{}';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "featureChoices"     JSONB   NOT NULL DEFAULT '{}';

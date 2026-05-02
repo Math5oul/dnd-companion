@@ -11,6 +11,12 @@ export interface ClassFeature {
   /** 'auto' = granted automatically; 'choice' = player picks one option */
   type: 'auto' | 'choice';
   options?: TraitOption[];
+  /** Skill IDs available to pick. Empty array = any proficient skill (for expertise). */
+  pickSkills?: string[];
+  /** How many skills to pick (default 1) */
+  pickCount?: number;
+  /** 'proficiency' = grants new proficiency; 'expertise' = doubles existing proficiency */
+  pickType?: 'proficiency' | 'expertise';
 }
 
 export interface LevelFeatures {
@@ -77,6 +83,9 @@ export const CLASS_FEATURES: Record<string, LevelFeatures[]> = {
           name: 'Conhecimento Primitivo',
           description: 'Você ganha proficiência em uma habilidade à sua escolha: Lidar com Animais, Atletismo, Intimidação, Natureza, Percepção ou Sobrevivência.',
           type: 'auto',
+          pickSkills: ['animalHandling', 'athletics', 'intimidation', 'nature', 'perception', 'survival'],
+          pickCount: 1,
+          pickType: 'proficiency',
         },
       ],
     },
@@ -422,6 +431,9 @@ export const CLASS_FEATURES: Record<string, LevelFeatures[]> = {
           name: 'Especialização',
           description: 'Escolha 2 habilidades ou ferramentas com proficiência — seu bônus de proficiência é dobrado para elas.',
           type: 'auto',
+          pickSkills: [],
+          pickCount: 2,
+          pickType: 'expertise',
         },
       ],
     },
@@ -539,6 +551,9 @@ export const CLASS_FEATURES: Record<string, LevelFeatures[]> = {
           name: 'Especialização (2ª)',
           description: 'Escolha mais 2 habilidades ou ferramentas com proficiência para dobrar o bônus de proficiência.',
           type: 'auto',
+          pickSkills: [],
+          pickCount: 2,
+          pickType: 'expertise',
         },
         {
           id: 'bard_magical_secrets_10',
@@ -2743,6 +2758,9 @@ export const CLASS_FEATURES: Record<string, LevelFeatures[]> = {
           name: 'Especialização',
           description: 'Dobre o bônus de proficiência em duas habilidades ou ferramentas com proficiência. Escolha mais dois em nível 6.',
           type: 'auto',
+          pickSkills: [],
+          pickCount: 2,
+          pickType: 'expertise',
         },
         {
           id: 'rogue_sneak_attack_1d6',
@@ -2853,6 +2871,9 @@ export const CLASS_FEATURES: Record<string, LevelFeatures[]> = {
           name: 'Especialização (2°)',
           description: 'Escolha mais duas habilidades ou ferramentas para dobrar o bônus de proficiência.',
           type: 'auto',
+          pickSkills: [],
+          pickCount: 2,
+          pickType: 'expertise',
         },
         {
           id: 'rogue_sneak_attack_3d6_l6',
@@ -4295,14 +4316,75 @@ const ABBREV_TO_ABILITY: Record<string, 'strength' | 'dexterity' | 'constitution
   cha: 'charisma',
 };
 
+type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+type AbilityBonus = Partial<Record<AbilityKey, number>>;
+
+/** Known feats that grant +1 to a specific ability score (not encoded in the ID suffix) */
+const FEAT_KNOWN_BONUSES: Record<string, AbilityBonus> = {
+  // Resiliente (CON) — most classes
+  bard_asi8_feat_resilient:    { constitution: 1 },
+  bard_asi16_feat_resilient:   { constitution: 1 },
+  cleric_asi4_feat_resilient:  { constitution: 1 },
+  cleric_asi12_feat_resilient: { constitution: 1 },
+  cleric_asi19_feat_resilient: { constitution: 1 },
+  druid_asi4_feat_resilient:   { constitution: 1 },
+  druid_asi12_feat_resilient:  { constitution: 1 },
+  druid_asi19_feat_resilient:  { constitution: 1 },
+  monk_asi12_feat_resilient:   { constitution: 1 },
+  paladin_asi16_feat_resilient: { constitution: 1 },
+  ranger_asi12_feat_resilient: { constitution: 1 },
+  rogue_asi8_feat_resilient:   { constitution: 1 },
+  rogue_asi12_feat_resilient:  { constitution: 1 },
+  rogue_asi19_feat_resilient:  { constitution: 1 },
+  sorc_asi8_feat_resilient:    { constitution: 1 },
+  sorc_asi16_feat_resilient:   { constitution: 1 },
+  wlock_asi8_feat_resilient:   { constitution: 1 },
+  wlock_asi12_feat_resilient:  { constitution: 1 },
+  wlock_asi19_feat_resilient:  { constitution: 1 },
+  wiz_asi8_feat_resilient:     { constitution: 1 },
+  wiz_asi19_feat_resilient:    { constitution: 1 },
+  // Resiliente (SAB) — barbarian, fighter
+  barb_asi16_feat_resilient:     { wisdom: 1 },
+  fighter_asi16_feat_resilient:  { wisdom: 1 },
+  // Atleta (+1 STR)
+  barb_asi12_feat_athlete:     { strength: 1 },
+};
+
 export function computeAsiTotals(
   traits: string[],
+  asiChoices?: Record<string, Partial<Record<AbilityKey, number>>>,
 ): Partial<Record<'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma', number>> {
-  const totals: Partial<Record<'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma', number>> = {};
+  const totals: Partial<Record<AbilityKey, number>> = {};
+
+  // Collect which _asiN patterns are covered by asiChoices (to skip old trait parsing for those)
+  const coveredAsiPatterns = new Set<string>();
+  if (asiChoices) {
+    for (const [featureId, bonuses] of Object.entries(asiChoices)) {
+      // featureId e.g. 'barbarian_asi4' → extract '_asi4'
+      const m = featureId.match(/_asi\d+/);
+      if (m) coveredAsiPatterns.add(m[0]);
+      for (const [ability, value] of Object.entries(bonuses) as [AbilityKey, number][]) {
+        if (value) totals[ability] = (totals[ability] ?? 0) + value;
+      }
+    }
+  }
+
   traits.forEach((traitId) => {
+    // Check known-feat bonuses map first (only if not covered by asiChoices)
+    const coveredByChoice = [...coveredAsiPatterns].some((pat) => traitId.includes(pat));
+    if (coveredByChoice) return;
+
+    const known = FEAT_KNOWN_BONUSES[traitId];
+    if (known) {
+      for (const [ability, value] of Object.entries(known) as [AbilityKey, number][]) {
+        totals[ability] = (totals[ability] ?? 0) + value;
+      }
+      return;
+    }
+
     if (!traitId.includes('_asi')) return;
     const parts = traitId.split('_');
-    const statPart = parts[parts.length - 1]; // e.g. 'str2', 'cha1con1', 'grappler'
+    const statPart = parts[parts.length - 1]; // e.g. 'str2', 'cha1con1'
     const regex = /([a-z]+)(\d+)/g;
     let match;
     while ((match = regex.exec(statPart)) !== null) {
