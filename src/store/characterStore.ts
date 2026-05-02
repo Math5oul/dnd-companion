@@ -720,10 +720,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
         if (!updatedProfs.includes(sid)) updatedProfs.push(sid);
       }
     }
-    await supabase.from('characters').update({
-      featureChoices: updatedChoices,
-      skillProficiencies: updatedProfs,
-    }).eq('id', characterId);
+    // Update local state immediately
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId
@@ -731,5 +728,14 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
           : c
       ),
     }));
+    // Persist to Supabase — featureChoices and skillProficiencies separately for resilience
+    const { error: e1 } = await supabase.from('characters').update({
+      skillProficiencies: updatedProfs,
+    }).eq('id', characterId);
+    if (e1) console.warn('[saveFeatureChoice] skillProficiencies error:', e1.message);
+    const { error: e2 } = await supabase.from('characters').update({
+      featureChoices: updatedChoices,
+    }).eq('id', characterId);
+    if (e2) console.warn('[saveFeatureChoice] featureChoices error (run supabase/schema.sql migration):', e2.message);
   },
 }));

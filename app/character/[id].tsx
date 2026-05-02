@@ -27,6 +27,8 @@ import ShortRestModal from '../../src/components/ShortRestModal';
 import EquipmentModal from '../../src/components/EquipmentModal';
 import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src/data/classFeatures';
 import { getActiveFeatureActions } from '../../src/data/featureEffects';
+import CombatPanel from '../../src/components/CombatPanel';
+import { detectMetamagic, spellAttackBonus as calcSpellAttackBonus, spellSaveDC as calcSpellSaveDC, applyMetamagicToDamage, metamagicCost, getSpellTraitBonuses, traitBonusesForSpell } from '../../src/lib/metamagic';
 import { Equipment, EQUIPMENT_TYPE_ICONS, EQUIPMENT_TYPE_LABELS_PT, EQUIPMENT_TYPE_LABELS_EN, BONUS_TYPE_LABELS } from '../../src/types/equipment';
 
 const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
@@ -68,7 +70,9 @@ export default function CharacterSheet() {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [traitsOpen, setTraitsOpen] = useState(false);
   const [equipOpen, setEquipOpen] = useState(false);
-  const [inventoryOpen, setInventoryOpen] = useState(true);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [spellsOpen, setSpellsOpen] = useState(false);
+  const [combatOpen, setCombatOpen] = useState(false);
   const [equipModalOpen, setEquipModalOpen] = useState(false);
   const [editingEquip, setEditingEquip] = useState<Equipment | null>(null);
   const [deleteEquipId, setDeleteEquipId] = useState<string | null>(null);
@@ -86,6 +90,13 @@ export default function CharacterSheet() {
   } | null>(null);
   // { spellId -> { total, detail, expires } }
   const [rollResults, setRollResults] = useState<Record<string, { total: number; detail: string }>>({});
+  // Spell attack roll results { spellId -> { hit, hitDetail, dmg?, dmgDetail?, critical?, notes? } }
+  const [spellCastResults, setSpellCastResults] = useState<Record<string, { hit?: number; hitDetail?: string; dmg?: number; dmgDetail?: string; critical?: boolean; notes?: string }>>({});
+  // ADV/DIS per spell
+  type AdvDis = 'normal' | 'adv' | 'dis';
+  const [spellAdv, setSpellAdv] = useState<Record<string, AdvDis>>({});
+  // Selected metamagic per spell
+  const [spellMeta, setSpellMeta] = useState<Record<string, Set<string>>>({});
   // skill roll results { skillId -> { total, detail } }
   const [skillRolls, setSkillRolls] = useState<Record<string, { total: number; detail: string }>>({});
 
@@ -130,7 +141,7 @@ export default function CharacterSheet() {
     }
   };
 
-  const handleCastSpell = (spellId: string, spellLevel: number, dmgStr: string | null) => {
+  const handleCastSpell = (spellId: string, spellLevel: number, dmgStr: string | null, spellObj?: ReturnType<typeof getSpellById>) => {
     if (!char) return;
     if (spellLevel > 0) {
       const slot = char.spellSlots[spellLevel];
@@ -141,7 +152,85 @@ export default function CharacterSheet() {
       }
       useSpellSlot(char.id, spellLevel);
     }
-    if (dmgStr) showRoll(spellId, dmgStr);
+
+    const advState = spellAdv[spellId] ?? 'normal';
+    const chosenMeta = spellMeta[spellId] ?? new Set<string>();
+    const availMeta = char ? detectMetamagic(char.traits ?? []) : [];
+
+    // Consume sorcery points if metamagic chosen
+    if (chosenMeta.size > 0) {
+      const spCost = metamagicCost(chosenMeta, spellLevel);
+      for (let i = 0; i < spCost; i++) useSorceryPoint(char.id);
+    }
+
+    // If it's an attack-roll spell, do a full roll
+    if (spellObj?.attackRoll) {
+      const rollD20 = () => Math.floor(Math.random() * 20) + 1;
+      const a = rollD20(); const b = rollD20();
+      const d20 = advState === 'adv' ? Math.max(a, b) : advState === 'dis' ? Math.min(a, b) : a;
+      const advLabel = advState === 'adv' ? `adv[${a},${b}]` : advState === 'dis' ? `dis[${a},${b}]` : `d20:${a}`;
+      const atkBonus = calcSpellAttackBonus(char);
+      const hit = d20 + atkBonus;
+      const isCrit = d20 === 20;
+      const hitDetail = `${advLabel}+${atkBonus}`;
+
+      // Trait bonuses
+      const traitBonuses = getSpellTraitBonuses(char);
+      const relevant = traitBonusesForSpell(traitBonuses, spellObj);
+      let extraDmgBonus = relevant.reduce((s, b) => s + b.damageBonus, 0);
+
+      let finalDmg: number | undefined;
+      let finalDmgDetail: string | undefined;
+      let notes: string | undefined;
+
+      if (dmgStr) {
+        // criticals double dice
+        const dmgExpression = isCrit
+          ? dmgStr.replace(/(\d+)d(\d+)/gi, (_, n, d) => `${Number(n) * 2}d${d}`)
+          : dmgStr;
+        const baseDmgExpr = extraDmgBonus ? `${dmgExpression}+${extraDmgBonus}` : dmgExpression;
+        // Apply metamagic (modifies dice expression string)
+        const metaResult = applyMetamagicToDamage(baseDmgExpr, chosenMeta, char);
+        const rolledDmg = rollDamage(metaResult.dmg);
+        finalDmg = rolledDmg.total;
+        finalDmgDetail = rolledDmg.detail;
+        notes = metaResult.notes.join(' · ') || undefined;
+      }
+
+      // Build meta note text
+      const metaNames = [...chosenMeta].map((mid) => {
+        const opt = availMeta.find((m) => m.id === mid);
+        return opt ? (language === 'en' ? opt.nameEn : opt.namePt) : mid;
+      });
+      if (metaNames.length > 0) notes = (notes ? notes + ' · ' : '') + `⚗️ ${metaNames.join(' + ')}`;
+      if (chosenMeta.has('quickened')) notes = '⚡ BA · ' + (notes ?? '');
+      if (chosenMeta.has('heightened')) notes = (notes ?? '') + `  ⬇️ ${language === 'en' ? 'Target: disadv save' : 'Alvo: desv. resist.'}`;
+      if (chosenMeta.has('twinned')) notes = (notes ?? '') + `  ×2 ${language === 'en' ? 'targets' : 'alvos'}`;
+
+      setSpellCastResults((prev) => ({ ...prev, [spellId]: { hit, hitDetail, dmg: finalDmg, dmgDetail: finalDmgDetail, critical: isCrit, notes } }));
+      setTimeout(() => setSpellCastResults((prev) => { const n = { ...prev }; delete n[spellId]; return n; }), 6000);
+      return;
+    }
+
+    // Saving-throw or utility spells: just roll damage + note metamagic
+    if (dmgStr) {
+      const traitBonuses = getSpellTraitBonuses(char);
+      const relevant = spellObj ? traitBonusesForSpell(traitBonuses, spellObj) : [];
+      const extraDmgBonus = relevant.reduce((s, b) => s + b.damageBonus, 0);
+      const baseDmgExpr = extraDmgBonus ? `${dmgStr}+${extraDmgBonus}` : dmgStr;
+      const metaResult = applyMetamagicToDamage(baseDmgExpr, chosenMeta, char);
+      const rolledDmg = rollDamage(metaResult.dmg);
+      const metaNames = [...chosenMeta].map((mid) => {
+        const opt = availMeta.find((m) => m.id === mid);
+        return opt ? (language === 'en' ? opt.nameEn : opt.namePt) : mid;
+      });
+      let notes: string | undefined = metaResult.notes.join(' · ') || undefined;
+      if (metaNames.length > 0) notes = (notes ? notes + ' · ' : '') + `⚗️ ${metaNames.join(' + ')}`;
+      if (chosenMeta.has('heightened')) notes = (notes ?? '') + `  ⬇️ ${language === 'en' ? 'Target: disadv save' : 'Alvo: desv. resist.'}`;
+      if (chosenMeta.has('twinned')) notes = (notes ?? '') + `  ×2 ${language === 'en' ? 'targets' : 'alvos'}`;
+      setSpellCastResults((prev) => ({ ...prev, [spellId]: { dmg: rolledDmg.total, dmgDetail: rolledDmg.detail, notes } }));
+      setTimeout(() => setSpellCastResults((prev) => { const n = { ...prev }; delete n[spellId]; return n; }), 6000);
+    }
   };
 
   const knownSpellsByLevel = useMemo(() => {
@@ -169,6 +258,13 @@ export default function CharacterSheet() {
     });
     return map;
   }, [char?.spells, char?.spellSlots]);
+
+  // Metamagic options (Sorcerer only)
+  const availableMetamagic = useMemo(() => char ? detectMetamagic(char.traits ?? []) : [], [char?.traits]);
+  const spellAtkBonus = char ? calcSpellAttackBonus(char) : 0;
+  const spellDC = char ? calcSpellSaveDC(char) : 0;
+  const spellTraitBonuses = char ? getSpellTraitBonuses(char) : [];
+  const spLeft = char?.sorceryPoints ? char.sorceryPoints.total - char.sorceryPoints.used : 0;
 
   // Bonus de atributos acumulado por ASIs (escolhas de nível)
   const asiTotals = useMemo(() => computeAsiTotals(char?.traits ?? [], char?.asiChoices), [char?.traits, char?.asiChoices]);
@@ -667,7 +763,17 @@ export default function CharacterSheet() {
       {/* Magias */}
       {cls?.spellcaster && (
         <>
-          <Text style={styles.sectionTitle}>{t.spells}</Text>
+          <TouchableOpacity
+            style={styles.drawerHeader}
+            onPress={() => setSpellsOpen((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.sectionTitle}>{t.spells}</Text>
+            <View style={styles.drawerHeaderRight}>
+              <Text style={styles.drawerToggleIcon}>{spellsOpen ? '▲' : '▼'}</Text>
+            </View>
+          </TouchableOpacity>
+          {spellsOpen && (<>
 
           {/* Pontos de Feitiçaria (apenas Sorcerer nível ≥ 2) */}
           {char.className === 'sorcerer' && char.sorceryPoints && char.sorceryPoints.total > 0 && (() => {
@@ -740,26 +846,102 @@ export default function CharacterSheet() {
               <Text style={styles.spellGroupLabel}>{t.cantrips.toUpperCase()}</Text>
               {knownSpellsByLevel[0].map((sp) => {
                 const dmg = getSpellDamage(sp, char.level);
-                const result = rollResults[sp.id];
+                const castResult = spellCastResults[sp.id];
+                const adv = spellAdv[sp.id] ?? 'normal';
+                const chosenMeta = spellMeta[sp.id] ?? new Set<string>();
+                const relevantBonuses = traitBonusesForSpell(spellTraitBonuses, sp);
                 return (
-                  <TouchableOpacity
-                    key={sp.id}
-                    style={[styles.spellMiniRow, result && styles.spellMiniRowActive]}
-                    onPress={() => handleCastSpell(sp.id, 0, dmg)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>
-                      {SCHOOL_ICON[sp.school]}
-                    </Text>
-                    <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
-                    {result ? (
-                      <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
-                    ) : dmg ? (
-                      <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
-                    ) : (
-                      <Text style={styles.spellMiniCast}>toque</Text>
-                    )}
-                  </TouchableOpacity>
+                  <View key={sp.id} style={[styles.spellMiniRow, castResult ? styles.spellMiniRowActive : undefined]}>
+                    <View style={{ flex: 1 }}>
+                      {/* Main spell row */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>{SCHOOL_ICON[sp.school]}</Text>
+                        <Text style={[styles.spellMiniName, { flex: 1 }]}>{localizeSpellName(sp, language)}</Text>
+                        <Text style={{ color: themeColors.subtext, fontSize: 10, marginRight: 4 }}>📏 {convertRange(sp.range, units, language as 'pt' | 'en')}</Text>
+                        {sp.savingThrow && (
+                          <Text style={[styles.spellMiniCast, { color: themeColors.subtext, fontSize: 10 }]}>
+                            CD{spellDC} {language === 'en' ? sp.savingThrow.abilityEn : sp.savingThrow.ability}
+                          </Text>
+                        )}
+                        {dmg && !castResult && (
+                          <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
+                        )}
+                      </View>
+                      {/* Trait bonuses */}
+                      {relevantBonuses.length > 0 && (
+                        <Text style={{ color: themeColors.accent, fontSize: 10, marginLeft: 24 }}>
+                          +{relevantBonuses.reduce((s, b) => s + b.damageBonus, 0)} {language === 'en' ? relevantBonuses[0].labelEn : relevantBonuses[0].labelPt}
+                        </Text>
+                      )}
+                      {/* Metamagic chips */}
+                      {availableMetamagic.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, marginLeft: 24 }}>
+                          <Text style={{ color: themeColors.subtext, fontSize: 10, alignSelf: 'center' }}>⚗️</Text>
+                          {availableMetamagic.map((opt) => {
+                            const chosen = chosenMeta.has(opt.id);
+                            const cost = opt.id === 'twinned' ? 0 : opt.cost;
+                            const canAfford = spLeft >= cost || chosen;
+                            return (
+                              <TouchableOpacity key={opt.id}
+                                style={{ borderRadius: 5, borderWidth: 1, borderColor: chosen ? themeColors.accent : themeColors.border, backgroundColor: chosen ? themeColors.accent + '22' : themeColors.bg, paddingHorizontal: 6, paddingVertical: 2, opacity: canAfford || chosen ? 1 : 0.4 }}
+                                onPress={() => {
+                                  if (!canAfford && !chosen) return;
+                                  setSpellMeta((prev) => {
+                                    const cur = new Set(prev[sp.id] ?? []);
+                                    chosen ? cur.delete(opt.id) : cur.add(opt.id);
+                                    return { ...prev, [sp.id]: cur };
+                                  });
+                                }}
+                              >
+                                <Text style={{ fontSize: 10, color: chosen ? themeColors.accent : themeColors.subtext, fontWeight: chosen ? '700' : '400' }}>
+                                  {chosen ? '✓ ' : ''}{language === 'en' ? opt.nameEn : opt.namePt}({cost}sp)
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                      {/* Cast result */}
+                      {castResult && (
+                        <View style={{ backgroundColor: themeColors.bg, borderRadius: 6, padding: 6, marginTop: 4, borderWidth: 1, borderColor: themeColors.border }}>
+                          {castResult.hit !== undefined && (
+                            <Text style={{ color: castResult.critical ? '#f0a500' : themeColors.text, fontWeight: '800', fontSize: 14 }}>
+                              🎯 {castResult.critical ? '💥 CRIT! ' : ''}{castResult.hit}  <Text style={{ color: themeColors.subtext, fontSize: 11, fontWeight: '400' }}>{castResult.hitDetail}</Text>
+                            </Text>
+                          )}
+                          {castResult.dmg !== undefined && (
+                            <Text style={{ color: themeColors.accent, fontWeight: '800', fontSize: 14 }}>
+                              💥 {castResult.dmg}  <Text style={{ color: themeColors.subtext, fontSize: 11, fontWeight: '400' }}>{castResult.dmgDetail}</Text>
+                            </Text>
+                          )}
+                          {castResult.notes && <Text style={{ color: themeColors.subtext, fontSize: 11, marginTop: 2 }}>{castResult.notes}</Text>}
+                        </View>
+                      )}
+                      {/* ADV/DIS toggle + cast button */}
+                      {(dmg || sp.attackRoll || sp.savingThrow) && (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                          {sp.attackRoll && (
+                            <TouchableOpacity
+                              style={{ flex: 1, borderRadius: 7, borderWidth: 1, borderColor: adv !== 'normal' ? (adv === 'adv' ? '#44ff66' : '#ff4444') : themeColors.border, backgroundColor: adv === 'adv' ? '#1a3a1a' : adv === 'dis' ? '#3a1a1a' : themeColors.bg, paddingVertical: 5, alignItems: 'center' }}
+                              onPress={() => setSpellAdv((prev) => { const cur = prev[sp.id] ?? 'normal'; const nxt = cur === 'normal' ? 'adv' : cur === 'adv' ? 'dis' : 'normal'; return { ...prev, [sp.id]: nxt }; })}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: adv === 'adv' ? '#44ff66' : adv === 'dis' ? '#ff4444' : themeColors.subtext }}>
+                                {adv === 'normal' ? '◈ Normal' : adv === 'adv' ? '▲ ADV' : '▼ DIS'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={{ flex: 2, borderRadius: 7, backgroundColor: themeColors.accent, paddingVertical: 5, alignItems: 'center' }}
+                            onPress={() => handleCastSpell(sp.id, 0, dmg, sp)}
+                          >
+                            <Text style={{ color: themeColors.bg, fontWeight: '800', fontSize: 12 }}>
+                              🎲 {sp.attackRoll ? (language === 'en' ? 'Attack' : 'Atacar') : (language === 'en' ? 'Cast' : 'Conjurar')}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 );
               })}
             </View>
@@ -772,16 +954,112 @@ export default function CharacterSheet() {
                 const available = slot.total - slot.used;
                 const spellsOfLevel = knownSpellsByLevel[Number(lvl)] ?? [];
                 const upcastable = upcastSpellsAtSlot[Number(lvl)] ?? [];
+
+                const renderSpellRow = (sp: NonNullable<ReturnType<typeof getSpellById>>, spellKey: string, slotLevel: number, dmg: string | null, isUpcast: boolean) => {
+                  const castResult = spellCastResults[spellKey];
+                  const adv = spellAdv[spellKey] ?? 'normal';
+                  const chosenMeta = spellMeta[spellKey] ?? new Set<string>();
+                  const relevantBonuses = traitBonusesForSpell(spellTraitBonuses, sp);
+                  return (
+                    <View key={spellKey} style={[styles.spellMiniRow, isUpcast ? styles.spellMiniRowUpcast : undefined, castResult ? styles.spellMiniRowActive : undefined, available === 0 ? styles.spellMiniRowDisabled : undefined]}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>{SCHOOL_ICON[sp.school]}</Text>
+                          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
+                            {isUpcast && <Text style={styles.upcastBadge}>↑{lvl}°</Text>}
+                          </View>
+                          <Text style={{ color: themeColors.subtext, fontSize: 10, marginRight: 4 }}>📏 {convertRange(sp.range, units, language as 'pt' | 'en')}</Text>
+                          {sp.savingThrow && (
+                            <Text style={{ color: themeColors.subtext, fontSize: 10 }}>
+                              CD{spellDC} {language === 'en' ? sp.savingThrow.abilityEn : sp.savingThrow.ability}
+                            </Text>
+                          )}
+                          {dmg && !castResult && (
+                            <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
+                          )}
+                        </View>
+                        {relevantBonuses.length > 0 && (
+                          <Text style={{ color: themeColors.accent, fontSize: 10, marginLeft: 24 }}>
+                            +{relevantBonuses.reduce((s, b) => s + b.damageBonus, 0)} {language === 'en' ? relevantBonuses[0].labelEn : relevantBonuses[0].labelPt}
+                          </Text>
+                        )}
+                        {availableMetamagic.length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, marginLeft: 24 }}>
+                            <Text style={{ color: themeColors.subtext, fontSize: 10, alignSelf: 'center' }}>⚗️</Text>
+                            {availableMetamagic.map((opt) => {
+                              const chosen = chosenMeta.has(opt.id);
+                              const cost = opt.id === 'twinned' ? slotLevel : opt.cost;
+                              const canAfford = spLeft >= cost || chosen;
+                              return (
+                                <TouchableOpacity key={opt.id}
+                                  style={{ borderRadius: 5, borderWidth: 1, borderColor: chosen ? themeColors.accent : themeColors.border, backgroundColor: chosen ? themeColors.accent + '22' : themeColors.bg, paddingHorizontal: 6, paddingVertical: 2, opacity: canAfford || chosen ? 1 : 0.4 }}
+                                  onPress={() => {
+                                    if (!canAfford && !chosen) return;
+                                    setSpellMeta((prev) => {
+                                      const cur = new Set(prev[spellKey] ?? []);
+                                      chosen ? cur.delete(opt.id) : cur.add(opt.id);
+                                      return { ...prev, [spellKey]: cur };
+                                    });
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 10, color: chosen ? themeColors.accent : themeColors.subtext, fontWeight: chosen ? '700' : '400' }}>
+                                    {chosen ? '✓ ' : ''}{language === 'en' ? opt.nameEn : opt.namePt}({cost}sp)
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                        {castResult && (
+                          <View style={{ backgroundColor: themeColors.bg, borderRadius: 6, padding: 6, marginTop: 4, borderWidth: 1, borderColor: themeColors.border }}>
+                            {castResult.hit !== undefined && (
+                              <Text style={{ color: castResult.critical ? '#f0a500' : themeColors.text, fontWeight: '800', fontSize: 14 }}>
+                                🎯 {castResult.critical ? '💥 CRIT! ' : ''}{castResult.hit}  <Text style={{ color: themeColors.subtext, fontSize: 11, fontWeight: '400' }}>{castResult.hitDetail}</Text>
+                              </Text>
+                            )}
+                            {castResult.dmg !== undefined && (
+                              <Text style={{ color: themeColors.accent, fontWeight: '800', fontSize: 14 }}>
+                                💥 {castResult.dmg}  <Text style={{ color: themeColors.subtext, fontSize: 11, fontWeight: '400' }}>{castResult.dmgDetail}</Text>
+                              </Text>
+                            )}
+                            {castResult.notes && <Text style={{ color: themeColors.subtext, fontSize: 11, marginTop: 2 }}>{castResult.notes}</Text>}
+                          </View>
+                        )}
+                        {(dmg || sp.attackRoll || sp.savingThrow) && available > 0 && (
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                            {sp.attackRoll && (
+                              <TouchableOpacity
+                                style={{ flex: 1, borderRadius: 7, borderWidth: 1, borderColor: adv !== 'normal' ? (adv === 'adv' ? '#44ff66' : '#ff4444') : themeColors.border, backgroundColor: adv === 'adv' ? '#1a3a1a' : adv === 'dis' ? '#3a1a1a' : themeColors.bg, paddingVertical: 5, alignItems: 'center' }}
+                                onPress={() => setSpellAdv((prev) => { const cur = prev[spellKey] ?? 'normal'; const nxt = cur === 'normal' ? 'adv' : cur === 'adv' ? 'dis' : 'normal'; return { ...prev, [spellKey]: nxt }; })}
+                              >
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: adv === 'adv' ? '#44ff66' : adv === 'dis' ? '#ff4444' : themeColors.subtext }}>
+                                  {adv === 'normal' ? '◈ Normal' : adv === 'adv' ? '▲ ADV' : '▼ DIS'}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              style={{ flex: 2, borderRadius: 7, backgroundColor: themeColors.accent, paddingVertical: 5, alignItems: 'center' }}
+                              onPress={() => handleCastSpell(spellKey, slotLevel, dmg, sp)}
+                            >
+                              <Text style={{ color: themeColors.bg, fontWeight: '800', fontSize: 12 }}>
+                                🎲 {sp.attackRoll ? (language === 'en' ? 'Attack' : 'Atacar') : sp.savingThrow ? `CD${spellDC} ${language === 'en' ? 'Save' : 'Resist.'}` : (language === 'en' ? 'Cast' : 'Conjurar')}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                };
+
                 return (
                   <View key={lvl} style={styles.slotGroup}>
                     <View style={styles.spellRow}>
                       <Text style={styles.spellLevel}>{spellLevelNames[Number(lvl) - 1]} {language === 'en' ? 'level' : 'nível'}</Text>
                       <View style={styles.slotDots}>
                         {Array.from({ length: slot.total }).map((_, i) => (
-                          <View
-                            key={i}
-                            style={[styles.slotDot, i < available ? styles.slotDotFull : styles.slotDotEmpty]}
-                          />
+                          <View key={i} style={[styles.slotDot, i < available ? styles.slotDotFull : styles.slotDotEmpty]} />
                         ))}
                       </View>
                       <Text style={styles.slotCount}>{available}/{slot.total}</Text>
@@ -789,145 +1067,37 @@ export default function CharacterSheet() {
                     {spellsOfLevel.length === 0 && upcastable.length === 0 && (
                       <Text style={styles.noSpellsHint}>{t.noSpellsHint}</Text>
                     )}
-                    {spellsOfLevel.map((sp) => {
-                      const dmg = getSpellDamage(sp, char.level);
-                      const result = rollResults[sp.id];
-                      return (
-                        <TouchableOpacity
-                          key={sp.id}
-                          style={[
-                            styles.spellMiniRow,
-                            result && styles.spellMiniRowActive,
-                            available === 0 && styles.spellMiniRowDisabled,
-                          ]}
-                          onPress={() => handleCastSpell(sp.id, Number(lvl), dmg)}
-                          activeOpacity={available === 0 ? 1 : 0.7}
-                        >
-                          <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>
-                            {SCHOOL_ICON[sp.school]}
-                          </Text>
-                          <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
-                          {result ? (
-                            <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
-                          ) : dmg ? (
-                            <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
-                          ) : (
-                            <Text style={styles.spellMiniCast}>toque</Text>
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                    {upcastable.map((sp) => {
-                      const dmg = getSpellDamageAtSlot(sp, Number(lvl));
-                      const result = rollResults[`${sp.id}-up${lvl}`];
-                      return (
-                        <TouchableOpacity
-                          key={`${sp.id}-up${lvl}`}
-                          style={[
-                            styles.spellMiniRow,
-                            styles.spellMiniRowUpcast,
-                            result && styles.spellMiniRowActive,
-                            available === 0 && styles.spellMiniRowDisabled,
-                          ]}
-                          onPress={() => handleCastSpell(`${sp.id}-up${lvl}`, Number(lvl), dmg)}
-                          activeOpacity={available === 0 ? 1 : 0.7}
-                        >
-                          <Text style={[styles.spellMiniIcon, { color: SCHOOL_COLOR[sp.school] }]}>
-                            {SCHOOL_ICON[sp.school]}
-                          </Text>
-                          <View style={styles.upcastNameRow}>
-                            <Text style={styles.spellMiniName}>{localizeSpellName(sp, language)}</Text>
-                            <Text style={styles.upcastBadge}>↑{lvl}°</Text>
-                          </View>
-                          {result ? (
-                            <Text style={styles.rollResult}>{result.total} {result.detail}</Text>
-                          ) : dmg ? (
-                            <Text style={styles.spellMiniDmg}>🎲 {translateDamageType(dmg, language)}</Text>
-                          ) : (
-                            <Text style={styles.spellMiniCast}>toque</Text>
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {spellsOfLevel.map((sp) => renderSpellRow(sp, sp.id, Number(lvl), getSpellDamage(sp, char.level), false))}
+                    {upcastable.map((sp) => renderSpellRow(sp, `${sp.id}-up${lvl}`, Number(lvl), getSpellDamageAtSlot(sp, Number(lvl)), true))}
                   </View>
                 );
               })}
             </View>
           )}
+          </>)}
         </>
       )}
 
-      {/* ── Ações de Features ── */}
-      {(() => {
-        const activeActions = getActiveFeatureActions(char.traits ?? []);
-        if (activeActions.length === 0) return null;
-        const actionUses = char.actionUses ?? {};
-        return (
-          <>
-            <Text style={styles.sectionTitle}>{language === 'en' ? '⚡ Feature Actions' : '⚡ Ações de Traits'}</Text>
-            <View style={{ gap: 8, marginBottom: 16 }}>
-              {activeActions.map((action) => {
-                const remaining = actionUses[action.id] ?? action.maxUses ?? null;
-                const isAtWill = action.useType === 'at_will';
-                const exhausted = !isAtWill && remaining !== null && remaining <= 0;
-                const maxUses = action.maxUses ?? 0;
-                return (
-                  <View key={action.id} style={[styles.featureActionCard, exhausted && styles.featureActionCardExhausted]}>
-                    <View style={styles.featureActionHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.featureActionName}>{language === 'en' ? action.nameEn : action.namePt}</Text>
-                        <Text style={styles.featureActionDesc}>{language === 'en' ? action.descEn : action.descPt}</Text>
-                        {action.damageDice && (
-                          <Text style={styles.featureActionDice}>🎲 {action.damageDice}{action.damageType ? ` ${translateDamageType(action.damageType, language)}` : ''}</Text>
-                        )}
-                      </View>
-                      <View style={styles.featureActionRight}>
-                        {/* Pips for limited-use actions */}
-                        {!isAtWill && maxUses > 0 && (
-                          <View style={styles.featureActionPips}>
-                            {Array.from({ length: maxUses }).map((_, i) => (
-                              <View
-                                key={i}
-                                style={[
-                                  styles.featureActionPip,
-                                  i < (remaining ?? maxUses) ? styles.featureActionPipFull : styles.featureActionPipEmpty,
-                                ]}
-                              />
-                            ))}
-                          </View>
-                        )}
-                        {isAtWill && (
-                          <Text style={styles.featureActionAtWill}>∞</Text>
-                        )}
-                        <TouchableOpacity
-                          style={[styles.featureActionBtn, exhausted && styles.featureActionBtnDisabled]}
-                          onPress={() => {
-                            if (exhausted) return;
-                            if (!isAtWill) {
-                              useFeatureAction(char.id, action.id, maxUses);
-                            }
-                            if (action.damageDice) {
-                              const result = rollDamage(action.damageDice);
-                              setHealToast({ text: `${language === 'en' ? action.nameEn : action.namePt}: ${result.total} [${result.detail}]` });
-                            }
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.featureActionBtnText}>
-                            {exhausted
-                              ? (language === 'en' ? 'Used' : 'Usado')
-                              : (language === 'en' ? 'Use' : 'Usar')}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </>
-        );
-      })()}
+      {/* ── Painel de Combate Unificado ── */}
+      <TouchableOpacity
+        style={styles.drawerHeader}
+        onPress={() => setCombatOpen((v) => !v)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.sectionTitle}>{language === 'en' ? '⚔️ Combat' : '⚔️ Combate'}</Text>
+        <Text style={styles.drawerToggleIcon}>{combatOpen ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {combatOpen && (
+      <CombatPanel
+        char={char}
+        language={language as 'pt' | 'en'}
+        units={units}
+        themeColors={themeColors}
+        actionUses={char.actionUses ?? {}}
+        onUseFeatureAction={(actionId, maxUses) => useFeatureAction(char.id, actionId, maxUses)}
+        onUseCharge={(itemId) => useEquipmentCharge(char.id, itemId)}
+      />
+      )}
 
       {/* ── Equipamentos + Inventário ── */}
       {(() => {
@@ -1038,41 +1208,6 @@ export default function CharacterSheet() {
               {item.traits.map((tr, i) => (
                 <Text key={i} style={styles.equipTrait}>• {tr}</Text>
               ))}
-
-              {/* Attacks */}
-              {item.attacks
-                .filter(() => item.type !== 'consumable' || item.activated)
-                .map((atk) => {
-                  const rollKey = `${item.id}:${atk.id}`;
-                  const result = attackRolls[rollKey];
-                  const hitLabel = atk.attackBonus >= 0 ? `+${atk.attackBonus}` : String(atk.attackBonus);
-                  const noCharges = item.type === 'consumable' && (item.charges ?? 0) <= 0;
-                  return (
-                    <TouchableOpacity
-                      key={atk.id}
-                      style={[styles.attackRow, result && styles.attackRowActive, noCharges && styles.useBtnDisabled]}
-                      onPress={() => {
-                        if (noCharges) return;
-                        handleAttackRoll(rollKey, atk.attackBonus, atk.damage, atk.damageType);
-                        if (item.type === 'consumable' && item.activated) {
-                          useEquipmentCharge(char.id, item.id);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.attackName}>
-                        ⚔️ {language === 'en' ? 'Attack' : 'Atacar'}
-                        {'  '}<Text style={styles.attackStat}>{hitLabel} · {atk.damage} {translateDamageType(atk.damageType, language)}{atk.range ? ` · ${translateEquipRange(atk.range, units, language)}` : ''}</Text>
-                      </Text>
-                      {result && (
-                        <View style={styles.attackResultRow}>
-                          <Text style={styles.attackHitResult}>🎯 {result.hit} {result.hitDetail}</Text>
-                          <Text style={styles.attackDmgResult}>💥 {result.dmg} {result.dmgDetail} {result.dmgType}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
 
               {/* Description */}
               {item.description ? <Text style={styles.equipDesc}>{item.description}</Text> : null}

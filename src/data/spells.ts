@@ -43,6 +43,10 @@ export interface Spell {
   cantripScale?: boolean; // dobra os dados em níveis 5, 11, 17
   upcastDice?: string;   // dados extras POR nível de slot acima do mínimo, e.g. '1d6'
   classes: string[]; // class ids
+  /** Magia usa rolagem de ataque (d20 + bônus de ataque vs CA) */
+  attackRoll?: boolean;
+  /** Magia requer jogada de resistência do alvo */
+  savingThrow?: { ability: string; abilityEn: string };
 }
 
 export const SPELLS: Spell[] = [
@@ -51,21 +55,21 @@ export const SPELLS: Spell[] = [
     id: 'fire-bolt', name: 'Raio de Fogo', level: 0, school: 'Evocação',
     castingTime: '1 ação', range: '36m', duration: 'Instantânea',
     description: 'Lança um raio de fogo. Causa 1d10 de dano de fogo. Aumenta em 1d10 nos níveis 5, 11 e 17.',
-    damage: '1d10 fogo', cantripScale: true,
+    damage: '1d10 fogo', cantripScale: true, attackRoll: true,
     classes: ['wizard', 'sorcerer'],
   },
   {
     id: 'ray-of-frost', name: 'Raio de Gelo', level: 0, school: 'Evocação',
     castingTime: '1 ação', range: '18m', duration: 'Instantânea',
     description: 'Raio azul-branco. Causa 1d8 de dano frio e reduz a velocidade do alvo em 3m até seu próximo turno.',
-    damage: '1d8 frio', cantripScale: true,
+    damage: '1d8 frio', cantripScale: true, attackRoll: true,
     classes: ['wizard', 'sorcerer'],
   },
   {
     id: 'eldritch-blast', name: 'Explosão Mística', level: 0, school: 'Evocação',
     castingTime: '1 ação', range: '36m', duration: 'Instantânea',
     description: 'Feixe crepitante de energia sinistra. Causa 1d10 de dano de força. Ganha feixes extras nos níveis 5, 11 e 17.',
-    damage: '1d10 força', cantripScale: true,
+    damage: '1d10 força', cantripScale: true, attackRoll: true,
     classes: ['warlock'],
   },
   {
@@ -73,6 +77,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '18m', duration: 'Instantânea',
     description: 'Chama de luz divina cai sobre o alvo. CD de Destreza ou 1d8 de dano radiante. Ignora cobertura.',
     damage: '1d8 radiante', cantripScale: true,
+    savingThrow: { ability: 'Destreza', abilityEn: 'Dexterity' },
     classes: ['cleric'],
   },
   {
@@ -80,6 +85,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '18m', duration: 'Instantânea',
     description: 'Insultos mágicos. CD de Sabedoria ou 1d4 de dano psíquico e desvantagem no próximo ataque.',
     damage: '1d4 psíquico', cantripScale: true,
+    savingThrow: { ability: 'Sabedoria', abilityEn: 'Wisdom' },
     classes: ['bard'],
   },
   {
@@ -116,7 +122,7 @@ export const SPELLS: Spell[] = [
     id: 'chill-touch', name: 'Toque Gelado', level: 0, school: 'Necromancia',
     castingTime: '1 ação', range: '36m', duration: '1 rodada',
     description: 'Mão esquelética fantasmagórica. Causa 1d8 de dano necrótico e impede cura até o início do seu próximo turno.',
-    damage: '1d8 necrótico', cantripScale: true,
+    damage: '1d8 necrótico', cantripScale: true, attackRoll: true,
     classes: ['wizard', 'sorcerer', 'warlock'],
   },
   {
@@ -137,6 +143,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '18m', duration: 'Instantânea',
     description: 'Sino fúnebre ressoa. CD de Sabedoria ou 1d8 de dano necrótico (1d12 se ferido).',
     damage: '1d8 necrótico', cantripScale: true,
+    savingThrow: { ability: 'Sabedoria', abilityEn: 'Wisdom' },
     classes: ['wizard', 'cleric', 'warlock'],
   },
   {
@@ -160,6 +167,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '4,5m (cone)', duration: 'Instantânea',
     description: 'Cone de fogo de 4,5m. CD de Destreza ou 3d6 de dano de fogo (+1d6 por slot maior).',
     damage: '3d6 fogo', upcastDice: '1d6',
+    savingThrow: { ability: 'Destreza', abilityEn: 'Dexterity' },
     classes: ['wizard', 'sorcerer'],
   },
   {
@@ -185,6 +193,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '1,5m (cubo de 4,5m)', duration: 'Instantânea',
     description: 'Onda de força trovejante. CD de Constituição: 2d8 de dano trovejante e empurrado 3m (metade no sucesso).',
     damage: '2d8 trovejante', upcastDice: '1d8',
+    savingThrow: { ability: 'Constituição', abilityEn: 'Constitution' },
     classes: ['wizard', 'sorcerer', 'druid', 'bard'],
   },
   {
@@ -253,7 +262,7 @@ export const SPELLS: Spell[] = [
     id: 'inflict-wounds', name: 'Infligir Ferimentos', level: 1, school: 'Necromancia',
     castingTime: '1 ação', range: 'Toque', duration: 'Instantânea',
     description: 'Ataque de toque. Causa 3d10 de dano necrótico (+1d10 por slot maior).',
-    damage: '3d10 necrótico', upcastDice: '1d10',
+    damage: '3d10 necrótico', upcastDice: '1d10', attackRoll: true,
     classes: ['cleric'],
   },
   {
@@ -300,13 +309,14 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '18m', duration: 'Instantânea',
     description: 'Som retumbante em raio 3m. CD de Constituição: 3d8 de dano trovejante. Objetos inorgânicos têm desvantagem.',
     damage: '3d8 trovejante', upcastDice: '1d8',
+    savingThrow: { ability: 'Constituição', abilityEn: 'Constitution' },
     classes: ['wizard', 'sorcerer', 'bard', 'warlock'],
   },
   {
     id: 'spiritual-weapon', name: 'Arma Espiritual', level: 2, school: 'Evocação',
     castingTime: '1 ação bônus', range: '18m', duration: '1 minuto',
     description: 'Arma flutuante que ataca como ação bônus (1d8 + mod conjuração de dano de força). +1d8 por 2 slots maior.',
-    damage: '1d8+mod',
+    damage: '1d8+mod', attackRoll: true,
     classes: ['cleric', 'paladin'],
   },
   {
@@ -325,7 +335,7 @@ export const SPELLS: Spell[] = [
     id: 'scorching-ray', name: 'Raio Escaldante', level: 2, school: 'Evocação',
     castingTime: '1 ação', range: '36m', duration: 'Instantânea',
     description: '3 raios de fogo, cada um causando 2d6 de dano de fogo. Pode direcionar para alvos diferentes. +1 raio por slot maior.',
-    damage: '3×2d6 fogo',
+    damage: '3×2d6 fogo', attackRoll: true,
     classes: ['wizard', 'sorcerer'],
   },
   {
@@ -354,6 +364,7 @@ export const SPELLS: Spell[] = [
     castingTime: '1 ação', range: '45m', duration: 'Instantânea',
     description: 'Explosão ardente em raio 6m. CD de Destreza: 8d6 de dano de fogo (+1d6 por slot maior).',
     damage: '8d6 fogo', upcastDice: '1d6',
+    savingThrow: { ability: 'Destreza', abilityEn: 'Dexterity' },
     classes: ['wizard', 'sorcerer'],
   },
   {
@@ -669,7 +680,7 @@ export const SPELLS: Spell[] = [
     id: 'guiding-bolt', name: 'Raio Guiador', level: 1, school: 'Evocação',
     castingTime: '1 ação', range: '36m', duration: '1 rodada',
     description: 'Ataque de toque: 4d6 de dano radiante. Próximo ataque contra o alvo tem vantagem. +1d6 por slot maior.',
-    damage: '4d6 radiante', upcastDice: '1d6',
+    damage: '4d6 radiante', upcastDice: '1d6', attackRoll: true,
     classes: ['cleric'],
   },
   {
@@ -749,7 +760,7 @@ export const SPELLS: Spell[] = [
     id: 'witch-bolt', name: 'Raio da Bruxa', level: 1, school: 'Evocação',
     castingTime: '1 ação', range: '9m', duration: 'Concentração, 1 minuto',
     description: 'Ataque de magia: 1d12 de dano elétrico. Cada turno seguinte (ação): 1d12 automático se o alvo ainda estiver em alcance.',
-    damage: '1d12 elétrico', upcastDice: '1d12',
+    damage: '1d12 elétrico', upcastDice: '1d12', attackRoll: true,
     classes: ['wizard', 'sorcerer', 'warlock'],
   },
   {
