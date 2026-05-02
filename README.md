@@ -14,6 +14,220 @@ Construído com Expo + React Native, Zustand e Supabase — funciona no navegado
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Funcionalidades](#funcionalidades)
 - [Como usar — Guia do Jogador](#como-usar--guia-do-jogador)
+
+---
+
+## Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Framework | [Expo](https://expo.dev) SDK ~54 + React Native 0.81 |
+| Roteamento | [expo-router](https://expo.github.io/router) v6 (file-based) |
+| Estado global | [Zustand](https://zustand-demo.pmnd.rs/) v5 |
+| Backend / banco | [Supabase](https://supabase.com) (PostgreSQL + REST API) |
+| Linguagem | TypeScript ~5.9 |
+| Execução web | React Native Web + react-dom 19 |
+| Deploy | [Vercel](https://vercel.com) → https://dnd-companion-ivory.vercel.app |
+
+---
+
+## Estrutura de pastas
+
+```
+app/
+├── _layout.tsx                   # Layout raiz — tema, GestureHandler, TabBar
+├── index.tsx                     # Tela inicial — lista de personagens com todos os atributos
+├── create/
+│   ├── step1-name.tsx
+│   ├── step2-race.tsx
+│   ├── step3-class.tsx
+│   ├── step4-abilities.tsx
+│   └── step5-review.tsx
+└── character/
+    ├── [id].tsx                  # Ficha completa do personagem
+    └── spells/
+        └── [id].tsx              # Gerenciador de grimório
+
+src/
+├── components/
+│   ├── ConfirmModal.tsx
+│   ├── EquipmentModal.tsx        # Modal CRUD de itens com catálogo, cargas, bônus
+│   ├── LevelUpModal.tsx
+│   ├── SettingsModal.tsx         # Modal de configurações (tema, idioma, unidades)
+│   ├── ShortRestModal.tsx
+│   └── TabBar.tsx
+├── data/
+│   ├── classes.ts
+│   ├── races.ts
+│   ├── spells.ts
+│   ├── classFeatures.ts
+│   └── defaultEquipment.ts      # Catálogo com 35+ itens (armas, armaduras, consumíveis)
+├── lib/
+│   ├── dice.ts
+│   ├── i18n.ts
+│   ├── supabase.ts
+│   ├── units.ts                  # Conversão métrico/imperial + tradução de tipos de dano/alcance
+│   └── translations/
+│       ├── index.ts
+│       ├── features.ts
+│       └── spells.ts
+├── store/
+│   ├── characterStore.ts         # CRUD + ações: HP, magia, equipamento, ouro, activeEffects
+│   ├── settingsStore.ts          # Tema (5), idioma (2), unidades (2)
+│   └── tabStore.ts
+└── types/
+    ├── character.ts              # Character, ActiveEffect, CharacterDraft…
+    └── equipment.ts              # Equipment, EquipmentType, EquipmentBonus, EquipmentAttack
+
+supabase/
+└── schema.sql
+```
+
+---
+
+## Pré-requisitos
+
+- **Node.js** 18+
+- **npm** 9+
+- Conta no [Supabase](https://supabase.com)
+- **Expo Go** no celular — opcional
+
+---
+
+## Configuração e execução
+
+### 1. Instalar dependências
+
+```bash
+npm install
+```
+
+### 2. Configurar o Supabase
+
+Crie `.env.local` na raiz:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://<seu-projeto>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<sua-anon-key>
+```
+
+Execute `supabase/schema.sql` no SQL Editor do Supabase.
+
+### 3. Executar
+
+```bash
+npm run web        # navegador
+npm run android    # Android via Expo Go
+npm run ios        # iOS via Expo Go
+```
+
+### 4. Deploy (Vercel)
+
+```bash
+npx expo export --platform web
+vercel dist --prod
+```
+
+---
+
+## Decisões de arquitetura
+
+| Decisão | Motivo |
+|---|---|
+| `ConfirmModal` em vez de `Alert.alert` | `Alert.alert` é no-op no browser |
+| `expo-secure-store` / `localStorage` | Detectado via `Platform.OS`; Supabase adapta o storage |
+| Seleção de dados por **índice** | Evita conflitos ao distribuir atributos com valores iguais |
+| `activeEffects` para poções de stat | Bônus sobrevivem à remoção do item do inventário |
+| Weights em lbs internamente | D&D 5e usa libras; UI converte para kg se métrico |
+| Zustand + Supabase | Estado local instantâneo + sincronização assíncrona |
+| Temas via `THEMES` record | Cada tema expõe `bg, surface, accent, text, subtext, border` |
+
+---
+
+## Funcionalidades
+
+### Personagem
+- ✅ Criação guiada em 5 passos (nome → raça → classe → atributos → revisão)
+- ✅ 9 raças com bônus e traços
+- ✅ 12 classes com dados de vida, spell slots e progressão de features (1–20)
+- ✅ Rolagem de atributos pelo método **4d6 descarta o menor**
+- ✅ Lista de personagens com todos os 6 atributos, HP e ouro exibidos em cards compactos
+
+### Combate e Descanso
+- ✅ HP com botões ±1/±5 e barra de cor dinâmica
+- ✅ **Descanso Curto** — gasta Dados de Vida para recuperar HP
+- ✅ **Descanso Longo** — recupera HP, spell slots, Dados de Vida e limpa efeitos temporários
+- ✅ **Level Up** — rolagem automática do dado de vida + mod. CON
+
+### Magias
+- ✅ ~180 magias (cantrips ao 9º nível) com rolagem automática de dano
+- ✅ Grimório com limites oficiais por nível/classe
+- ✅ Truques escaláveis nos níveis 5, 11 e 17
+- ✅ Spell slots consumidos em tempo real
+
+### Equipamentos e Inventário
+- ✅ **Duas gavetas separadas**: ⚔️ Equipamentos (itens equipados) e 🎒 Inventário (não equipados, consumíveis, outros)
+- ✅ Catálogo com **35+ itens** prontos: armas simples e marciais, armaduras (couro → placas), escudos, acessórios mágicos
+- ✅ Consumíveis com **cargas** — poções de cura (one-shot), Poção de Sopro de Fogo (3 cargas)
+- ✅ Poções de status (`activeEffects`): Agilidade (+4 DES), Força do Gigante (+6 FOR), Heroísmo (+2 todos)
+- ✅ **Peso** de cada item; exibição de carga atual vs. capacidade (STR × 15) na gaveta de equipamentos
+- ✅ Tipo de dano como **picklist** (13 tipos, traduzidos PT/EN)
+- ✅ Tipo de dano e alcance dos ataques **traduzidos automaticamente** (PT ↔ EN)
+- ✅ Bônus de AC e atributos aplicados automaticamente ao equipar
+
+### Ouro e Economia
+- ✅ Carteira de ouro (padrão: 40 gp) com modal de ajuste rápido (±5/±10/±50)
+
+### Interface e Configurações
+- ✅ **5 temas**: Escuro, Sépia, Abismo, Necro (verde-azulado), Onyx (preto e dourado)
+- ✅ **2 idiomas**: Português e Inglês — UI, magias e features completamente traduzidas
+- ✅ **2 sistemas de unidades**: Métrico e Imperial (distâncias e pesos)
+- ✅ CA centralizada abaixo dos atributos, calculada automaticamente via DEX + equipamentos
+- ✅ Compartilhar ficha como texto plano
+
+---
+
+## Como usar — Guia do Jogador
+
+### Criando um personagem
+
+1. Toque em **"+ Novo Personagem"**
+2. **Nome** → **Raça** (9 opções) → **Classe** (12 opções)
+3. **Atributos**: role 4d6, selecione um dado, toque num atributo para atribuir
+4. **Revisão** → **"Criar Personagem"**
+
+### Equipamentos e Inventário
+
+- Abra a gaveta **🎒 Inventário** e toque **"+ Adicionar Item"**
+- Escolha do catálogo ou preencha manualmente
+- Itens não-consumíveis têm um **toggle** para equipar/desequipar — ao equipar, migram para **⚔️ Equipamentos**
+- Consumíveis ficam sempre no Inventário; toque **"🧪 Beber/Usar"** para ativá-los
+
+### Ouro
+- Toque no card **🪙 Peças de Ouro** para abrir o modal de ajuste
+
+### Descansos
+| Ação | Efeito |
+|---|---|
+| 🌙 **Descanso Longo** | HP total + spell slots + Dados de Vida + remove efeitos temporários |
+| ☀️ **Descanso Curto** | Gasta Dados de Vida para recuperar HP |
+| ⬆️ **Level Up** | Avança nível com rolagem de HP |
+| 📤 **Compartilhar** | Resumo em texto para WhatsApp/Discord |
+
+Aplicativo **mobile e web** para acompanhar personagens de Dungeons & Dragons 5ª Edição.  
+Construído com Expo + React Native, Zustand e Supabase — funciona no navegador, no Android e no iOS.
+
+---
+
+## Índice
+
+- [Stack](#stack)
+- [Estrutura de pastas](#estrutura-de-pastas)
+- [Pré-requisitos](#pré-requisitos)
+- [Configuração e execução](#configuração-e-execução)
+- [Decisões de arquitetura](#decisões-de-arquitetura)
+- [Funcionalidades](#funcionalidades)
+- [Como usar — Guia do Jogador](#como-usar--guia-do-jogador)
 - [Magias com rolagem automática](#magias-com-rolagem-automática)
 
 ---

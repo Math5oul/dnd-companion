@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { Character, CharacterDraft, AbilityName, AbilityScores } from '../types/character';
+import { Equipment } from '../types/equipment';
 import { supabase } from '../lib/supabase';
 import { getClassById } from '../data/classes';
-import { calculateStartingHp } from '../lib/dice';
+import { calculateStartingHp, rollDamage } from '../lib/dice';
 
 const EMPTY_DRAFT: CharacterDraft = {
   name: '',
@@ -53,6 +54,32 @@ interface CharacterStore {
   toggleSkillProficiency: (characterId: string, skillId: string) => Promise<void>;
   /** Adiciona uma proficiência de perícia (só adiciona, não remove — escolha permanente) */
   addSkillProficiency: (characterId: string, skillId: string) => Promise<void>;
+  /** Adiciona um equipamento */
+  addEquipment: (characterId: string, item: Equipment) => Promise<void>;
+  /** Atualiza um equipamento existente */
+  updateEquipment: (characterId: string, item: Equipment) => Promise<void>;
+  /** Remove um equipamento */
+  removeEquipment: (characterId: string, itemId: string) => Promise<void>;
+  /** Alterna equipado/desequipado */
+  toggleEquipped: (characterId: string, itemId: string) => Promise<void>;
+  /**
+   * Usa uma carga de um item consumível.
+   * - Decrementa charges; remove o item quando chega a 0.
+   * - Se o item tem useEffect.type === 'heal', rola os dados e aplica o HP.
+   * Returns { hpGained } so the UI can show the result.
+   */
+  useEquipmentCharge: (characterId: string, itemId: string) => Promise<{ hpGained: number; detail: string }>;
+  /**
+   * Ativa um consumível (ex: beber a poção de sopro de fogo).
+   * Não consome cargas — apenas marca activated: true para liberar os ataques.
+   */
+  activateConsumable: (characterId: string, itemId: string) => Promise<void>;
+  /** Atualiza as moedas de ouro do personagem (delta positivo ou negativo) */
+  updateGold: (characterId: string, delta: number) => Promise<void>;
+  /**
+   * Remove itens com duration === 'long_rest' do inventário (chamado no Long Rest).
+   */
+  clearLongRestItems: (characterId: string) => Promise<void>;
 
   // CRUD
   fetchCharacters: () => Promise<void>;
@@ -415,6 +442,187 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, skillProficiencies: updated } : c
+      ),
+    }));
+  },
+
+  addEquipment: async (characterId, item) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updated = [...(char.equipment ?? []), item];
+    await supabase.from('characters').update({ equipment: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: updated } : c
+      ),
+    }));
+  },
+
+  updateEquipment: async (characterId, item) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updated = (char.equipment ?? []).map((e) => e.id === item.id ? item : e);
+    await supabase.from('characters').update({ equipment: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: updated } : c
+      ),
+    }));
+  },
+
+  removeEquipment: async (characterId, itemId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updated = (char.equipment ?? []).filter((e) => e.id !== itemId);
+    await supabase.from('characters').update({ equipment: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: updated } : c
+      ),
+    }));
+  },
+
+  toggleEquipped: async (characterId, itemId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updated = (char.equipment ?? []).map((e) =>
+      e.id === itemId ? { ...e, equipped: !e.equipped } : e
+    );
+    await supabase.from('characters').update({ equipment: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: updated } : c
+      ),
+    }));
+  },
+
+  useEquipmentCharge: async (characterId, itemId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return { hpGained: 0, detail: '' };
+
+    const item = (char.equipment ?? []).find((e) => e.id === itemId);
+    if (!item) return { hpGained: 0, detail: '' };
+
+    // Roll healing BEFORE mutating state
+    let hpGained = 0;
+    let detail = '';
+    if (item.useEffect?.type === 'heal') {
+      const result = rollDamage(item.useEffect.dice);
+      hpGained = result.total;
+      detail = result.detail;
+    }
+
+    // Decrement charges
+    const newCharges = (item.charges ?? 1) - 1;
+
+    let updatedEquipment: Equipment[];
+    if (newCharges <= 0) {
+      // Remove item when all charges are used
+      updatedEquipment = (char.equipment ?? []).filter((e) => e.id !== itemId);
+    } else {
+      updatedEquipment = (char.equipment ?? []).map((e) =>
+        e.id === itemId ? { ...e, charges: newCharges } : e
+      );
+    }
+
+    // Apply HP if heal effect
+    let newHp = char.hp;
+    if (hpGained > 0) {
+      newHp = Math.min(char.maxHp, char.hp + hpGained);
+    }
+
+    await supabase
+      .from('characters')
+      .update({ equipment: updatedEquipment, hp: newHp })
+      .eq('id', characterId);
+
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: updatedEquipment, hp: newHp } : c
+      ),
+    }));
+
+    return { hpGained, detail };
+  },
+
+  clearLongRestItems: async (characterId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    // Remove activated long_rest equipment (e.g. fire breath potion after charges)
+    const updatedEquipment = (char.equipment ?? []).filter(
+      (e) => !(e.duration === 'long_rest' && e.activated === true)
+    );
+    // Remove active effects that expire on long rest
+    const updatedEffects = (char.activeEffects ?? []).filter(
+      (e) => e.expiresOn !== 'long_rest'
+    );
+    await supabase
+      .from('characters')
+      .update({ equipment: updatedEquipment, activeEffects: updatedEffects })
+      .eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId
+          ? { ...c, equipment: updatedEquipment, activeEffects: updatedEffects }
+          : c
+      ),
+    }));
+  },
+
+  activateConsumable: async (characterId, itemId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+
+    const item = (char.equipment ?? []).find((e) => e.id === itemId);
+    if (!item) return;
+
+    const isStatBoost = item.bonuses.length > 0 && item.attacks.length === 0;
+
+    if (isStatBoost && item.duration === 'long_rest') {
+      // Stat-boost potion (e.g. Poção de Agilidade):
+      // Remove item from inventory immediately + add a persistent ActiveEffect
+      const updatedEquipment = (char.equipment ?? []).filter((e) => e.id !== itemId);
+      const newEffect = {
+        id: `effect_${itemId}_${Date.now()}`,
+        name: item.name,
+        bonuses: item.bonuses,
+        expiresOn: 'long_rest' as const,
+      };
+      const updatedEffects = [...(char.activeEffects ?? []), newEffect];
+      await supabase
+        .from('characters')
+        .update({ equipment: updatedEquipment, activeEffects: updatedEffects })
+        .eq('id', characterId);
+      set((s) => ({
+        characters: s.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, equipment: updatedEquipment, activeEffects: updatedEffects }
+            : c
+        ),
+      }));
+    } else {
+      // Multi-charge consumable (e.g. Poção de Sopro de Fogo):
+      // Keep item in inventory, set activated: true to show attacks
+      const updatedEquipment = (char.equipment ?? []).map((e) =>
+        e.id === itemId ? { ...e, activated: true, equipped: true } : e
+      );
+      await supabase.from('characters').update({ equipment: updatedEquipment }).eq('id', characterId);
+      set((s) => ({
+        characters: s.characters.map((c) =>
+          c.id === characterId ? { ...c, equipment: updatedEquipment } : c
+        ),
+      }));
+    }
+  },
+
+  updateGold: async (characterId, delta) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const newGold = Math.max(0, (char.gold ?? 40) + delta);
+    await supabase.from('characters').update({ gold: newGold }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, gold: newGold } : c
       ),
     }));
   },

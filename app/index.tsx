@@ -63,14 +63,33 @@ export default function HomeScreen() {
         {translateRaceName(item.race, getRaceById(item.race)?.name ?? item.race, language)} · {translateClassName(item.className, getClassById(item.className)?.name ?? item.className, language)}
       </Text>
       <View style={styles.cardStats}>
-        <Text style={[styles.statBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+        <Text style={[styles.statBadge, { backgroundColor: colors.bg, color: '#e05555' }]}>
           ❤️ {item.hp}/{item.maxHp}
         </Text>
-        <Text style={[styles.statBadge, { backgroundColor: colors.bg, color: colors.text }]}>
-          💪 FOR {formatModifier(item.abilityScores.strength)}
+        {(item.gold ?? 0) > 0 && (
+          <Text style={[styles.statBadge, { backgroundColor: colors.bg, color: '#d4a017' }]}>
+            🪙 {item.gold ?? 0} gp
+          </Text>
+        )}
+      </View>
+      <View style={[styles.cardStats, { marginTop: 4 }]}>
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          💪 {formatModifier(item.abilityScores.strength)}
         </Text>
-        <Text style={[styles.statBadge, { backgroundColor: colors.bg, color: colors.text }]}>
-          🧠 INT {formatModifier(item.abilityScores.intelligence)}
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          🏃 {formatModifier(item.abilityScores.dexterity)}
+        </Text>
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          🛡️ {formatModifier(item.abilityScores.constitution)}
+        </Text>
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          🧠 {formatModifier(item.abilityScores.intelligence)}
+        </Text>
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          🦉 {formatModifier(item.abilityScores.wisdom)}
+        </Text>
+        <Text style={[styles.statBadge, styles.abilityBadge, { backgroundColor: colors.bg, color: colors.text }]}>
+          ✨ {formatModifier(item.abilityScores.charisma)}
         </Text>
       </View>
     </TouchableOpacity>
@@ -130,6 +149,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
     fontSize: 12,
+  },
+  abilityBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    fontSize: 11,
+    borderRadius: 6,
   },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 16, lineHeight: 26 },
   fab: {

@@ -27,22 +27,26 @@ export default function SettingsModal({ visible, onClose }: Props) {
           {/* Theme */}
           <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t.themeLabel}</Text>
           <View style={styles.optionRow}>
-            {(['dark', 'sepia', 'abyss'] as AppTheme[]).map((th) => (
-              <TouchableOpacity
-                key={th}
-                style={[
-                  styles.optionBtn,
-                  { backgroundColor: THEMES[th].surface, borderColor: THEMES[th].accent },
-                  theme === th && styles.optionSelected,
-                ]}
-                onPress={() => setTheme(th)}
-              >
-                <View style={[styles.themeCircle, { backgroundColor: THEMES[th].bg, borderColor: THEMES[th].accent }]} />
-                <Text style={[styles.optionText, { color: THEMES[th].text }]}>
-                  {th === 'dark' ? t.themeDark : th === 'sepia' ? t.themeSepia : t.themeAbyss}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {(['dark', 'sepia', 'abyss', 'necro', 'onyx'] as AppTheme[]).map((th) => {
+              const labels: Record<AppTheme, string> = {
+                dark: t.themeDark, sepia: t.themeSepia, abyss: t.themeAbyss,
+                necro: t.themeNecro, onyx: t.themeOnyx,
+              };
+              return (
+                <TouchableOpacity
+                  key={th}
+                  style={[
+                    styles.optionBtn,
+                    { backgroundColor: THEMES[th].surface, borderColor: THEMES[th].accent },
+                    theme === th && styles.optionSelected,
+                  ]}
+                  onPress={() => setTheme(th)}
+                >
+                  <View style={[styles.themeCircle, { backgroundColor: THEMES[th].bg, borderColor: THEMES[th].accent }]} />
+                  <Text style={[styles.optionText, { color: THEMES[th].text }]}>{labels[th]}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t.languageLabel}</Text>

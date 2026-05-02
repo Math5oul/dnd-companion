@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type AppTheme = 'dark' | 'sepia' | 'abyss';
+export type AppTheme = 'dark' | 'sepia' | 'abyss' | 'necro' | 'onyx';
 export type AppLanguage = 'pt' | 'en';
 export type UnitSystem = 'metric' | 'imperial';
 
@@ -44,6 +44,22 @@ export const THEMES: Record<AppTheme, { bg: string; surface: string; accent: str
     text: '#d0ccff',
     subtext: '#5a5880',
     border: '#7c6af033',
+  },
+  necro: {
+    bg: '#071a14',
+    surface: '#0e2b20',
+    accent: '#3dd6a3',
+    text: '#c8f0e0',
+    subtext: '#4a8a72',
+    border: '#3dd6a333',
+  },
+  onyx: {
+    bg: '#0a0a0a',
+    surface: '#161616',
+    accent: '#d4a017',
+    text: '#f0e8cc',
+    subtext: '#6a6050',
+    border: '#d4a01733',
   },
 };
 

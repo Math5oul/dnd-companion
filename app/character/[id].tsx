@@ -7,13 +7,14 @@ import {
   StyleSheet,
   Share,
   Modal,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
 import { useTabStore } from '../../src/store/tabStore';
 import { useSettingsStore, THEMES } from '../../src/store/settingsStore';
 import { useI18n, translateRaceName, translateClassName } from '../../src/lib/i18n';
-import { convertRange, convertDuration, convertCastingTime, convertSchool, convertTextDistances, translateDamageType } from '../../src/lib/units';
+import { convertRange, convertDuration, convertCastingTime, convertSchool, convertTextDistances, translateDamageType, translateEquipRange } from '../../src/lib/units';
 import { localizeSpellName, localizeFeatureName, localizeFeatureDesc } from '../../src/lib/translations';import { formatModifier, rollDamage } from '../../src/lib/dice';
 import { getRaceById } from '../../src/data/races';
 import { getClassById } from '../../src/data/classes';
@@ -23,7 +24,9 @@ import { SKILLS, getProficiencyBonus, CLASS_SKILL_OPTIONS, CLASS_SKILL_COUNT } f
 import ConfirmModal from '../../src/components/ConfirmModal';
 import LevelUpModal from '../../src/components/LevelUpModal';
 import ShortRestModal from '../../src/components/ShortRestModal';
+import EquipmentModal from '../../src/components/EquipmentModal';
 import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src/data/classFeatures';
+import { Equipment, EQUIPMENT_TYPE_ICONS, EQUIPMENT_TYPE_LABELS_PT, EQUIPMENT_TYPE_LABELS_EN, BONUS_TYPE_LABELS } from '../../src/types/equipment';
 
 const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
   { key: 'strength', icon: '💪' },
@@ -37,7 +40,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency } = useCharacterStore();
+  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
@@ -63,6 +66,15 @@ export default function CharacterSheet() {
   const [statDetailKey, setStatDetailKey] = useState<AbilityName | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [traitsOpen, setTraitsOpen] = useState(false);
+  const [equipOpen, setEquipOpen] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(true);
+  const [equipModalOpen, setEquipModalOpen] = useState(false);
+  const [editingEquip, setEditingEquip] = useState<Equipment | null>(null);
+  const [deleteEquipId, setDeleteEquipId] = useState<string | null>(null);
+  const [attackRolls, setAttackRolls] = useState<Record<string, { hit: number; hitDetail: string; dmg: number; dmgDetail: string; dmgType: string }>>({});
+  const [healToast, setHealToast] = useState<{ text: string } | null>(null);
+  const [goldModalOpen, setGoldModalOpen] = useState(false);
+  const [goldInput, setGoldInput] = useState('');
 
   // { spellId -> { total, detail, expires } }
   const [rollResults, setRollResults] = useState<Record<string, { total: number; detail: string }>>({});
@@ -85,6 +97,29 @@ export default function CharacterSheet() {
     setTimeout(() => {
       setSkillRolls((prev) => { const n = { ...prev }; delete n[skillId]; return n; });
     }, 4000);
+  };
+
+  const handleAttackRoll = (attackId: string, attackBonus: number, dmgStr: string, dmgType: string) => {
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const hitTotal = d20 + attackBonus;
+    const hitDetail = `[d20:${d20}${attackBonus >= 0 ? `+${attackBonus}` : attackBonus}]`;
+    const dmgResult = rollDamage(dmgStr);
+    setAttackRolls((prev) => ({ ...prev, [attackId]: { hit: hitTotal, hitDetail, dmg: dmgResult.total, dmgDetail: dmgResult.detail, dmgType } }));
+    setTimeout(() => {
+      setAttackRolls((prev) => { const n = { ...prev }; delete n[attackId]; return n; });
+    }, 5000);
+  };
+
+  const handleUseCharge = async (itemId: string, itemName: string) => {
+    if (!char) return;
+    const { hpGained, detail } = await useEquipmentCharge(char.id, itemId);
+    if (hpGained > 0) {
+      setHealToast({ text: `❤️ +${hpGained} HP ${detail}` });
+      setTimeout(() => setHealToast(null), 3500);
+    } else {
+      setHealToast({ text: language === 'en' ? `✅ Used ${itemName}` : `✅ ${itemName} usada` });
+      setTimeout(() => setHealToast(null), 2500);
+    }
   };
 
   const handleCastSpell = (spellId: string, spellLevel: number, dmgStr: string | null) => {
@@ -129,6 +164,24 @@ export default function CharacterSheet() {
 
   // Bonus de atributos acumulado por ASIs (escolhas de nível)
   const asiTotals = useMemo(() => computeAsiTotals(char?.traits ?? []), [char?.traits]);
+
+  // Bonus de atributos de itens equipados
+  const equipBonuses = useMemo(() => {
+    const totals: Record<string, number> = {};
+    // Bonuses from equipped items
+    (char?.equipment ?? [])
+      .filter((e) => e.equipped)
+      .forEach((e) => e.bonuses.forEach((b) => {
+        totals[b.type] = (totals[b.type] ?? 0) + b.value;
+      }));
+    // Bonuses from active effects (e.g. Poção de Agilidade drunk)
+    (char?.activeEffects ?? []).forEach((ef) =>
+      ef.bonuses.forEach((b) => {
+        totals[b.type] = (totals[b.type] ?? 0) + b.value;
+      })
+    );
+    return totals;
+  }, [char?.equipment, char?.activeEffects]);
 
   if (!char) {
     return (
@@ -231,15 +284,44 @@ export default function CharacterSheet() {
         </View>
       </View>
 
+      {/* Bolsa de moedas */}
+      <TouchableOpacity style={styles.goldCard} onPress={() => { setGoldInput(''); setGoldModalOpen(true); }} activeOpacity={0.8}>
+        <Text style={styles.goldIcon}>🪙</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.goldLabel}>{language === 'en' ? 'Gold Pieces' : 'Peças de Ouro'}</Text>
+          <Text style={styles.goldAmount}>{char.gold ?? 40} gp</Text>
+        </View>
+        <Text style={styles.goldEdit}>✏️</Text>
+      </TouchableOpacity>
+
       {/* Atributos */}
       <Text style={styles.sectionTitle}>{t.attributes}</Text>
+
+      {/* Active effects banner (e.g. poções de status) */}
+      {(char.activeEffects ?? []).length > 0 && (
+        <View style={styles.activeEffectsRow}>
+          {(char.activeEffects ?? []).map((ef) => (
+            <View key={ef.id} style={styles.activeEffectBadge}>
+              <Text style={styles.activeEffectIcon}>✨</Text>
+              <View>
+                <Text style={styles.activeEffectName}>{ef.name}</Text>
+                <Text style={styles.activeEffectBonuses}>
+                  {ef.bonuses.map((b) => `${b.value >= 0 ? '+' : ''}${b.value} ${BONUS_TYPE_LABELS[b.type][language === 'en' ? 'en' : 'pt']}`).join('  ')}
+                  {'  '}<Text style={styles.activeEffectExpiry}>🌙 {language === 'en' ? 'Long Rest' : 'Desc. Longo'}</Text>
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={styles.statsGrid}>
         {ABILITIES.map(({ key, label, icon }) => {
           const base = char.abilityScores[key];
-          const bonus = asiTotals[key] ?? 0;
+          const bonus = (asiTotals[key] ?? 0) + (equipBonuses[key] ?? 0);
           const total = base + bonus;
+          const hasEquipBonus = (equipBonuses[key] ?? 0) !== 0;
           return (
-            <TouchableOpacity key={key} style={styles.statBox} onPress={() => setStatDetailKey(key)} activeOpacity={0.7}>
+            <TouchableOpacity key={key} style={[styles.statBox, hasEquipBonus && styles.statBoxBoosted]} onPress={() => setStatDetailKey(key)} activeOpacity={0.7}>
               <Text style={styles.statIcon}>{icon}</Text>
               <Text style={styles.statScore}>{total}</Text>
               <Text style={styles.statMod}>{formatModifier(total)}</Text>
@@ -249,12 +331,22 @@ export default function CharacterSheet() {
         })}
       </View>
 
+      {/* CA — centrado abaixo dos atributos */}
+      <View style={styles.acRow}>
+        <View style={styles.acBadge}>
+          <Text style={styles.acBadgeText}>
+            🛡️ CA: {10 + Math.floor(((char.abilityScores.dexterity + (asiTotals.dexterity ?? 0) + (equipBonuses.dexterity ?? 0)) - 10) / 2) + (equipBonuses['ac'] ?? 0)}
+          </Text>
+        </View>
+      </View>
+
       {/* Modal de detalhe de atributo */}
       {statDetailKey && (() => {
         const ab = ABILITIES.find((a) => a.key === statDetailKey)!;
         const base = char.abilityScores[statDetailKey];
-        const bonus = asiTotals[statDetailKey] ?? 0;
-        const total = base + bonus;
+        const asiBonus = asiTotals[statDetailKey] ?? 0;
+        const eqBonus = equipBonuses[statDetailKey] ?? 0;
+        const total = base + asiBonus + eqBonus;
         return (
           <Modal visible transparent animationType="fade">
             <TouchableOpacity style={styles.statModalOverlay} activeOpacity={1} onPress={() => setStatDetailKey(null)}>
@@ -264,10 +356,16 @@ export default function CharacterSheet() {
                   <Text style={styles.statModalLabel}>{t.base}</Text>
                   <Text style={styles.statModalValue}>{base}</Text>
                 </View>
-                {bonus > 0 && (
+                {asiBonus !== 0 && (
                   <View style={styles.statModalRow}>
                     <Text style={styles.statModalLabel}>{t.asi}</Text>
-                    <Text style={[styles.statModalValue, { color: '#50d080' }]}>+{bonus}</Text>
+                    <Text style={[styles.statModalValue, { color: '#50d080' }]}>{asiBonus >= 0 ? `+${asiBonus}` : asiBonus}</Text>
+                  </View>
+                )}
+                {eqBonus !== 0 && (
+                  <View style={styles.statModalRow}>
+                    <Text style={styles.statModalLabel}>{language === 'en' ? 'Equipment' : 'Equipamento'}</Text>
+                    <Text style={[styles.statModalValue, { color: '#60aaff' }]}>{eqBonus >= 0 ? `+${eqBonus}` : eqBonus}</Text>
                   </View>
                 )}
                 <View style={[styles.statModalRow, styles.statModalTotal]}>
@@ -323,7 +421,7 @@ export default function CharacterSheet() {
                 )}
                 <View style={styles.skillsBlock}>
                   {SKILLS.map((skill) => {
-                    const abilityScore = char.abilityScores[skill.ability] + (asiTotals[skill.ability] ?? 0);
+                    const abilityScore = char.abilityScores[skill.ability] + (asiTotals[skill.ability] ?? 0) + (equipBonuses[skill.ability] ?? 0);
                     const abilityMod = Math.floor((abilityScore - 10) / 2);
                     const isProficient = profs.includes(skill.id);
                     const isEligible = eligibleOptions.includes(skill.id);
@@ -388,14 +486,15 @@ export default function CharacterSheet() {
       })()}
 
       {/* Traits / Habilidades */}
-      {(char.traits?.length ?? 0) > 0 && (() => {
+      {((char.traits?.length ?? 0) > 0 || (char.equipment ?? []).some((e) => e.equipped && e.traits.length > 0)) && (() => {
         const allFeatures = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features);
         const allOptions = allFeatures.flatMap((f) => f.options ?? []);
         const traitMap = Object.fromEntries([
           ...allFeatures.map((f) => [f.id, { name: f.name, description: f.description }]),
           ...allOptions.map((o) => [o.id, { name: o.name, description: o.description }]),
         ]);
-        const count = (char.traits ?? []).filter((tid) => traitMap[tid]).length;
+        const count = (char.traits ?? []).filter((tid) => traitMap[tid]).length
+          + (char.equipment ?? []).filter((e) => e.equipped && e.traits.length > 0).length;
         return (
           <>
             <TouchableOpacity
@@ -423,6 +522,19 @@ export default function CharacterSheet() {
                     </View>
                   );
                 })}
+                {/* Traits from equipped items */}
+                {(char.equipment ?? [])
+                  .filter((e) => e.equipped && e.traits.length > 0)
+                  .map((e) => (
+                    <View key={`eq-${e.id}`} style={[styles.traitCard, { borderLeftWidth: 3, borderLeftColor: themeColors.accent + '88' }]}>
+                      <Text style={styles.traitName}>
+                        {EQUIPMENT_TYPE_ICONS[e.type]} {e.name}
+                      </Text>
+                      {e.traits.map((tr, i) => (
+                        <Text key={i} style={styles.traitDesc}>• {tr}</Text>
+                      ))}
+                    </View>
+                  ))}
               </View>
             )}
           </>
@@ -622,6 +734,214 @@ export default function CharacterSheet() {
         </>
       )}
 
+      {/* ── Equipamentos + Inventário ── */}
+      {(() => {
+        const allItems = char.equipment ?? [];
+        const typeLabels = language === 'en' ? EQUIPMENT_TYPE_LABELS_EN : EQUIPMENT_TYPE_LABELS_PT;
+
+        // Split: equipped gear (non-consumable, non-other, equipped) vs. inventory (everything else)
+        const equippedItems = allItems.filter(
+          (e) => e.equipped && e.type !== 'consumable' && e.type !== 'other'
+        );
+        const inventoryItems = allItems.filter(
+          (e) => !e.equipped || e.type === 'consumable' || e.type === 'other'
+        );
+
+        const totalWeightLbs = allItems.reduce((s, e) => s + (e.weight ?? 0), 0);
+        const carryCapLbs = (char.abilityScores?.strength ?? 10) * 15;
+        const weightDisplay = units === 'metric'
+          ? `${(totalWeightLbs * 0.453592).toFixed(1)} / ${(carryCapLbs * 0.453592).toFixed(0)} kg`
+          : `${totalWeightLbs % 1 === 0 ? totalWeightLbs : totalWeightLbs.toFixed(1)} / ${carryCapLbs} lbs`;
+        const weightRatio = totalWeightLbs / carryCapLbs;
+        const weightColor = weightRatio >= 1 ? '#ff4444' : weightRatio >= 0.5 ? '#f0a500' : '#4caf50';
+
+        const renderItem = (item: Equipment) => {
+          const attackResults = Object.entries(attackRolls).filter(([k]) => k.startsWith(item.id + ':'));
+          return (
+            <View key={item.id} style={[styles.equipCard, !item.equipped && styles.equipCardUnequipped]}>
+              {/* Item header */}
+              <View style={styles.equipCardHeader}>
+                <Text style={styles.equipTypeIcon}>{EQUIPMENT_TYPE_ICONS[item.type]}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.equipName, !item.equipped && styles.equipNameUnequipped]}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.equipTypeName}>{typeLabels[item.type]}</Text>
+                    {(item.goldValue ?? 0) > 0 && (
+                      <Text style={styles.equipGoldValue}>🪙 {item.goldValue} gp</Text>
+                    )}
+                    {item.duration === 'long_rest' && (
+                      <Text style={styles.equipDurationBadge}>🌙 {language === 'en' ? 'Long Rest' : 'Desc. Longo'}</Text>
+                    )}
+                    {item.duration === 'forever' && item.type === 'accessory' && (
+                      <Text style={styles.equipDurationBadge}>♾️</Text>
+                    )}
+                  </View>
+                </View>
+                {item.type !== 'consumable' && (
+                  <TouchableOpacity style={styles.equippedToggle} onPress={() => toggleEquipped(char.id, item.id)}>
+                    <View style={[styles.equippedToggleDot, item.equipped && styles.equippedToggleDotOn]} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.equipActionBtn} onPress={() => { setEditingEquip(item); setEquipModalOpen(true); }}>
+                  <Text style={styles.equipActionBtnText}>✏️</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.equipActionBtn} onPress={() => setDeleteEquipId(item.id)}>
+                  <Text style={styles.equipDeleteBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Charges + Use button for consumables */}
+              {item.type === 'consumable' && item.charges !== undefined && (
+                <View style={styles.chargesRow}>
+                  {item.activated && (
+                    <View style={styles.chargePips}>
+                      {Array.from({ length: item.maxCharges ?? item.charges }).map((_, i) => (
+                        <View
+                          key={i}
+                          style={[styles.chargePip, i < item.charges! ? styles.chargePipFull : styles.chargePipEmpty]}
+                        />
+                      ))}
+                      <Text style={styles.chargesLabel}>{item.charges}/{item.maxCharges ?? item.charges}</Text>
+                    </View>
+                  )}
+                  {!item.activated && (
+                    <TouchableOpacity
+                      style={styles.useBtn}
+                      onPress={() => {
+                        if (item.useEffect) {
+                          handleUseCharge(item.id, item.name);
+                        } else {
+                          activateConsumable(char.id, item.id);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.useBtnText}>
+                        {item.useEffect?.type === 'heal'
+                          ? (language === 'en' ? `🧪 Use — ${item.useEffect.dice} HP` : `🧪 Usar — ${item.useEffect.dice} PV`)
+                          : (language === 'en' ? '🧪 Drink' : '🧪 Beber')}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Bonuses */}
+              {item.bonuses.length > 0 && (
+                <View style={styles.equipBonusRow}>
+                  {item.bonuses.map((b, i) => (
+                    <View key={i} style={[styles.equipBonusBadge, !item.equipped && styles.equipBonusBadgeOff]}>
+                      <Text style={styles.equipBonusBadgeText}>
+                        {BONUS_TYPE_LABELS[b.type][language === 'en' ? 'en' : 'pt']} {b.value >= 0 ? `+${b.value}` : b.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Traits */}
+              {item.traits.map((tr, i) => (
+                <Text key={i} style={styles.equipTrait}>• {tr}</Text>
+              ))}
+
+              {/* Attacks */}
+              {item.attacks
+                .filter(() => item.type !== 'consumable' || item.activated)
+                .map((atk) => {
+                  const rollKey = `${item.id}:${atk.id}`;
+                  const result = attackRolls[rollKey];
+                  const hitLabel = atk.attackBonus >= 0 ? `+${atk.attackBonus}` : String(atk.attackBonus);
+                  const noCharges = item.type === 'consumable' && (item.charges ?? 0) <= 0;
+                  return (
+                    <TouchableOpacity
+                      key={atk.id}
+                      style={[styles.attackRow, result && styles.attackRowActive, noCharges && styles.useBtnDisabled]}
+                      onPress={() => {
+                        if (noCharges) return;
+                        handleAttackRoll(rollKey, atk.attackBonus, atk.damage, atk.damageType);
+                        if (item.type === 'consumable' && item.activated) {
+                          useEquipmentCharge(char.id, item.id);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.attackName}>
+                        ⚔️ {language === 'en' ? 'Attack' : 'Atacar'}
+                        {'  '}<Text style={styles.attackStat}>{hitLabel} · {atk.damage} {translateDamageType(atk.damageType, language)}{atk.range ? ` · ${translateEquipRange(atk.range, units, language)}` : ''}</Text>
+                      </Text>
+                      {result && (
+                        <View style={styles.attackResultRow}>
+                          <Text style={styles.attackHitResult}>🎯 {result.hit} {result.hitDetail}</Text>
+                          <Text style={styles.attackDmgResult}>💥 {result.dmg} {result.dmgDetail} {result.dmgType}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+
+              {/* Description */}
+              {item.description ? <Text style={styles.equipDesc}>{item.description}</Text> : null}
+            </View>
+          );
+        };
+
+        return (
+          <>
+            {/* ── Drawer: Equipamentos (gear ativamente equipado) ── */}
+            <TouchableOpacity style={styles.drawerHeader} onPress={() => setEquipOpen((v) => !v)} activeOpacity={0.8}>
+              <Text style={styles.sectionTitle}>{language === 'en' ? '⚔️ Equipment' : '⚔️ Equipamentos'}</Text>
+              <View style={styles.drawerHeaderRight}>
+                {totalWeightLbs > 0 && (
+                  <Text style={[styles.drawerCountText, { color: weightColor, marginRight: 6 }]}>⚖️ {weightDisplay}</Text>
+                )}
+                {equippedItems.length > 0 && (
+                  <View style={styles.drawerCountBadge}>
+                    <Text style={styles.drawerCountText}>{equippedItems.length}</Text>
+                  </View>
+                )}
+                <Text style={styles.drawerToggleIcon}>{equipOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {equipOpen && (
+              <View style={styles.equipBlock}>
+                {equippedItems.length === 0 && (
+                  <Text style={styles.equipEmpty}>{language === 'en' ? 'No equipped gear. Equip items from your inventory.' : 'Nenhum item equipado. Equipe itens do inventário.'}</Text>
+                )}
+                {equippedItems.map(renderItem)}
+              </View>
+            )}
+
+            {/* ── Drawer: Inventário (não equipados + consumíveis + outros) ── */}
+            <TouchableOpacity style={styles.drawerHeader} onPress={() => setInventoryOpen((v) => !v)} activeOpacity={0.8}>
+              <Text style={styles.sectionTitle}>{language === 'en' ? '🎒 Inventory' : '🎒 Inventário'}</Text>
+              <View style={styles.drawerHeaderRight}>
+                {inventoryItems.length > 0 && (
+                  <View style={styles.drawerCountBadge}>
+                    <Text style={styles.drawerCountText}>{inventoryItems.length}</Text>
+                  </View>
+                )}
+                <Text style={styles.drawerToggleIcon}>{inventoryOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {inventoryOpen && (
+              <View style={styles.equipBlock}>
+                {inventoryItems.length === 0 && (
+                  <Text style={styles.equipEmpty}>{language === 'en' ? 'Inventory is empty.' : 'Inventário vazio.'}</Text>
+                )}
+                {inventoryItems.map(renderItem)}
+
+                {/* Add item button only in inventory drawer */}
+                <TouchableOpacity style={styles.addEquipBtn} onPress={() => { setEditingEquip(null); setEquipModalOpen(true); }}>
+                  <Text style={styles.addEquipBtnText}>+ {language === 'en' ? 'Add Item' : 'Adicionar Item'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        );
+      })()}
+
       {/* Ações */}
       <Text style={styles.sectionTitle}>{t.actions}</Text>
       {cls?.spellcaster && (
@@ -691,6 +1011,7 @@ export default function CharacterSheet() {
           recoverSpellSlots(char.id);
           updateHp(char.id, char.maxHp);
           recoverSorceryPoints(char.id);
+          clearLongRestItems(char.id);
         }}
       />
       <ShortRestModal
@@ -710,6 +1031,91 @@ export default function CharacterSheet() {
         onCancel={() => setModal(null)}
         onConfirm={() => setModal(null)}
       />
+      {/* Equipment modal */}
+      <EquipmentModal
+        visible={equipModalOpen}
+        initial={editingEquip}
+        onCancel={() => setEquipModalOpen(false)}
+        onSave={(item) => {
+          setEquipModalOpen(false);
+          if (editingEquip) {
+            updateEquipment(char.id, item);
+          } else {
+            addEquipment(char.id, item);
+          }
+        }}
+      />
+      {/* Delete equipment confirm */}
+      <ConfirmModal
+        visible={deleteEquipId !== null}
+        title={language === 'en' ? 'Remove item' : 'Remover item'}
+        message={language === 'en' ? 'Remove this item from the character?' : 'Remover este item do personagem?'}
+        confirmLabel={language === 'en' ? 'Remove' : 'Remover'}
+        confirmDestructive
+        onCancel={() => setDeleteEquipId(null)}
+        onConfirm={() => {
+          if (deleteEquipId) removeEquipment(char.id, deleteEquipId);
+          setDeleteEquipId(null);
+        }}
+      />
+
+      {/* Gold wallet modal */}
+      <Modal visible={goldModalOpen} transparent animationType="fade">
+        <View style={styles.goldModalOverlay}>
+          <View style={styles.goldModalBox}>
+            <Text style={styles.goldModalTitle}>🪙 {language === 'en' ? 'Gold Wallet' : 'Bolsa de Moedas'}</Text>
+            <Text style={styles.goldModalCurrent}>{char.gold ?? 40} gp</Text>
+            <Text style={styles.goldModalHint}>
+              {language === 'en'
+                ? 'Enter amount to add (+) or remove (−):'
+                : 'Digite o valor para adicionar (+) ou remover (−):'}
+            </Text>
+            <TextInput
+              style={styles.goldModalInput}
+              value={goldInput}
+              onChangeText={setGoldInput}
+              placeholder={language === 'en' ? 'e.g.: 50 or -20' : 'Ex: 50 ou -20'}
+              placeholderTextColor={themeColors.subtext + '88'}
+              keyboardType="numbers-and-punctuation"
+              autoFocus
+            />
+            {/* Quick buttons */}
+            <View style={styles.goldModalBtns}>
+              {[-50, -10, -5, +5, +10, +50].map((v) => (
+                <TouchableOpacity
+                  key={v}
+                  style={[styles.goldQuickBtn, v > 0 ? styles.goldQuickBtnAdd : styles.goldQuickBtnRemove]}
+                  onPress={() => { updateGold(char.id, v); setGoldModalOpen(false); }}
+                >
+                  <Text style={styles.goldQuickBtnText}>{v > 0 ? `+${v}` : v}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.goldModalActions}>
+              <TouchableOpacity style={styles.goldCancelBtn} onPress={() => setGoldModalOpen(false)}>
+                <Text style={styles.goldCancelBtnText}>{language === 'en' ? 'Cancel' : 'Cancelar'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.goldConfirmBtn}
+                onPress={() => {
+                  const val = parseInt(goldInput.replace(',', '.'));
+                  if (!isNaN(val)) updateGold(char.id, val);
+                  setGoldModalOpen(false);
+                }}
+              >
+                <Text style={styles.goldConfirmBtnText}>{language === 'en' ? 'Apply' : 'Aplicar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Heal / Use toast */}
+      {healToast && (
+        <View style={styles.healToast} pointerEvents="none">
+          <Text style={styles.healToastText}>{healToast.text}</Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -1249,4 +1655,269 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     width: 120,
     textAlign: 'right',
   },
+
+  // ── Attributes extra ──────────────────────────────────────────────────────
+  statBoxBoosted: {
+    borderColor: '#60aaff66',
+  },
+  acRow: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  acBadge: {
+    backgroundColor: '#1a2a4a',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#60aaff44',
+  },
+  acBadgeText: { color: '#60aaff', fontSize: 16, fontWeight: '700' },
+
+  // ── Equipment ─────────────────────────────────────────────────────────────
+  equipBlock: {
+    gap: 10,
+    marginBottom: 24,
+  },
+  equipEmpty: {
+    color: c.subtext,
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  equipCard: {
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: c.border,
+    gap: 6,
+  },
+  equipCardUnequipped: {
+    opacity: 0.6,
+    borderStyle: 'dashed',
+  },
+  equipCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  equipTypeIcon: { fontSize: 20 },
+  equipName: { color: c.text, fontSize: 15, fontWeight: '700' },
+  equipNameUnequipped: { color: c.subtext },
+  equipTypeName: { color: c.subtext, fontSize: 11 },
+  equipGoldValue: { color: '#f0b429', fontSize: 11, fontWeight: '600' },
+  equippedToggle: { padding: 4 },
+  equippedToggleDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: c.subtext,
+    backgroundColor: 'transparent',
+  },
+  equippedToggleDotOn: { backgroundColor: '#50d080', borderColor: '#50d080' },
+  equipActionBtn: { padding: 4 },
+  equipActionBtnText: { fontSize: 16 },
+  equipDeleteBtnText: { fontSize: 16, color: '#ff4444', fontWeight: '900' },
+  equipBonusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  equipBonusBadge: {
+    backgroundColor: '#60aaff22',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#60aaff55',
+  },
+  equipBonusBadgeOff: { backgroundColor: c.bg, borderColor: c.border },
+  equipBonusBadgeText: { color: '#60aaff', fontSize: 12, fontWeight: '700' },
+  equipTrait: { color: c.subtext, fontSize: 12, paddingLeft: 4 },
+  equipDesc: { color: c.subtext, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  attackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: c.bg + 'cc',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#ff804033',
+    gap: 8,
+  },
+  attackRowActive: {
+    backgroundColor: '#200500',
+    borderColor: '#ff8040aa',
+  },
+  attackName: { color: c.accent, fontSize: 13, fontWeight: '600', flex: 1 },
+  attackStatsRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  attackStat: { color: c.subtext, fontSize: 11 },
+  attackResultRow: { gap: 2, alignItems: 'flex-end' },
+  attackHitResult: { color: '#f0e040', fontSize: 13, fontWeight: '800' },
+  attackDmgResult: { color: '#ff8040', fontSize: 12, fontWeight: '700' },
+  addEquipBtn: {
+    backgroundColor: c.surface,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: c.accent + '55',
+    borderStyle: 'dashed',
+  },
+  addEquipBtnText: { color: c.accent, fontSize: 14, fontWeight: '700' },
+
+  // ── Duration badge ────────────────────────────────────────────────────────
+  equipDurationBadge: {
+    color: '#a0b4ff',
+    fontSize: 10,
+    fontWeight: '700',
+    backgroundColor: '#a0b4ff22',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+
+  // ── Charges row ──────────────────────────────────────────────────────────
+  chargesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    gap: 10,
+  },
+  chargePips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  chargePip: { width: 10, height: 10, borderRadius: 5 },
+  chargePipFull: { backgroundColor: c.accent },
+  chargePipEmpty: { backgroundColor: c.border },
+  chargesLabel: { color: c.subtext, fontSize: 11, marginLeft: 4 },
+  useBtn: {
+    backgroundColor: c.accent,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  useBtnDisabled: { opacity: 0.35 },
+  useBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+
+  // ── Heal / Use toast ──────────────────────────────────────────────────────
+  healToast: {
+    position: 'absolute',
+    bottom: 90,
+    alignSelf: 'center',
+    backgroundColor: '#1a3a1a',
+    borderWidth: 1,
+    borderColor: '#44ff6655',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    zIndex: 9999,
+    elevation: 10,
+  },
+  healToastText: { color: '#44ff66', fontSize: 18, fontWeight: '800' },
+
+  // ── Active Effects (poções de status) ────────────────────────────────────
+  activeEffectsRow: { gap: 6, marginBottom: 10 },
+  activeEffectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#1a2a1a',
+    borderWidth: 1,
+    borderColor: '#44ff6644',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  activeEffectIcon: { fontSize: 18 },
+  activeEffectName: { color: '#7fff7f', fontSize: 13, fontWeight: '700' },
+  activeEffectBonuses: { color: '#44ff66', fontSize: 12, marginTop: 1 },
+  activeEffectExpiry: { color: '#a0b4ff', fontSize: 11, fontWeight: '600' },
+
+  // ── Gold Wallet card ──────────────────────────────────────────────────────
+  goldCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#f0b42944',
+    gap: 12,
+  },
+  goldIcon: { fontSize: 28 },
+  goldLabel: { color: c.subtext, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  goldAmount: { color: '#f0b429', fontSize: 26, fontWeight: '900', marginTop: 1 },
+  goldEdit: { fontSize: 18, opacity: 0.6 },
+
+  // ── Gold Modal ───────────────────────────────────────────────────────────
+  goldModalOverlay: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  goldModalBox: {
+    backgroundColor: c.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 380,
+    borderWidth: 1,
+    borderColor: '#f0b42944',
+    gap: 12,
+  },
+  goldModalTitle: { color: '#f0b429', fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  goldModalCurrent: { color: c.text, fontSize: 40, fontWeight: '900', textAlign: 'center', letterSpacing: 1 },
+  goldModalHint: { color: c.subtext, fontSize: 13, textAlign: 'center' },
+  goldModalInput: {
+    backgroundColor: c.bg,
+    borderWidth: 1,
+    borderColor: '#f0b42966',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: '#f0b429',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  goldModalBtns: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  goldQuickBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minWidth: 54,
+    alignItems: 'center',
+  },
+  goldQuickBtnAdd: { backgroundColor: '#1a3a1a', borderWidth: 1, borderColor: '#44ff6644' },
+  goldQuickBtnRemove: { backgroundColor: '#3a1a1a', borderWidth: 1, borderColor: '#ff444444' },
+  goldQuickBtnText: { color: c.text, fontSize: 14, fontWeight: '700' },
+  goldModalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  goldCancelBtn: {
+    flex: 1,
+    backgroundColor: c.bg,
+    borderRadius: 10,
+    padding: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+  goldCancelBtnText: { color: c.subtext, fontSize: 15, fontWeight: '600' },
+  goldConfirmBtn: {
+    flex: 2,
+    backgroundColor: '#f0b429',
+    borderRadius: 10,
+    padding: 13,
+    alignItems: 'center',
+  },
+  goldConfirmBtnText: { color: '#1a1000', fontSize: 15, fontWeight: '900' },
 });

@@ -1,3 +1,5 @@
+import type { Equipment, EquipmentBonus } from './equipment';
+
 export type AbilityName = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
 
 export interface AbilityScores {
@@ -11,6 +13,14 @@ export interface AbilityScores {
 
 export interface SpellSlots {
   [level: number]: { total: number; used: number };
+}
+
+/** Efeito temporário de item consumível (ex: poção de agilidade) */
+export interface ActiveEffect {
+  id: string;
+  name: string;
+  bonuses: EquipmentBonus[];
+  expiresOn: 'long_rest' | 'short_rest';
 }
 
 export interface Character {
@@ -32,6 +42,12 @@ export interface Character {
   hitDiceUsed?: number;
   /** IDs das perícias em que o personagem tem proficiência */
   skillProficiencies?: string[];
+  /** Lista de equipamentos do personagem */
+  equipment?: Equipment[];
+  /** Efeitos temporários ativos (de poções, etc) */
+  activeEffects?: ActiveEffect[];
+  /** Moedas de ouro do personagem */
+  gold?: number;
   createdAt: string;
   updatedAt: string;
 }

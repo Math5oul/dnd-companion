@@ -150,12 +150,48 @@ const DAMAGE_TYPE_EN: Record<string, string> = {
   cortante: 'slashing', contundente: 'bludgeoning', perfurante: 'piercing',
 };
 
-/** Translate damage type words in a damage string (e.g. "1d10 fogo" → "1d10 fire") */
+const DAMAGE_TYPE_PT: Record<string, string> = {
+  fire: 'fogo', cold: 'frio', lightning: 'elétrico', thunder: 'trovejante',
+  necrotic: 'necrótico', psychic: 'psíquico', radiant: 'radiante',
+  acid: 'ácido', force: 'força', poison: 'veneno',
+  slashing: 'cortante', bludgeoning: 'contundente', piercing: 'perfurante',
+};
+
+/** Translate damage type words in a damage string. Works both EN→PT and PT→EN. */
 export function translateDamageType(damage: string, lang: AppLanguage): string {
-  if (lang === 'pt') return damage;
+  if (lang === 'pt') {
+    // Translate EN damage type words → PT
+    return damage.replace(/[a-z]+/gi, (word) =>
+      DAMAGE_TYPE_PT[word.toLowerCase()] ?? word
+    );
+  }
   return damage.replace(/[a-záàâãéèêíóôõúûçñ]+/gi, (word) =>
     DAMAGE_TYPE_EN[word.toLowerCase()] ?? word
   );
+}
+
+/** Translate an equipment attack range string (e.g. "5 ft", "80/320 ft", "30 ft cone").
+ *  Converts ft→m if metric, and translates "ft"→"pés" / "cone"→"cone" for PT. */
+export function translateEquipRange(range: string, units: UnitSystem, lang: AppLanguage): string {
+  if (!range) return range;
+
+  // Convert feet numbers to meters if metric
+  if (units === 'metric') {
+    return range
+      .replace(/(\d+)\s*ft/gi, (_, n) => {
+        const ft = parseInt(n, 10);
+        const m = Math.round((ft / 5) * 1.5 * 10) / 10;
+        return `${Number.isInteger(m) ? m : m}m`;
+      })
+      .replace(/cone/gi, 'cone');
+  }
+
+  // Imperial + PT: just translate "ft" → "pés"
+  if (lang === 'pt') {
+    return range.replace(/\bft\b/gi, 'pés').replace(/\bcone\b/gi, 'cone');
+  }
+
+  return range;
 }
 
 /**

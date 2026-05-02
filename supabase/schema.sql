@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS characters (
   "sorceryPoints"  JSONB,
   "hitDiceUsed"    INTEGER NOT NULL DEFAULT 0,
   "skillProficiencies" JSONB NOT NULL DEFAULT '[]',
+  "equipment"      JSONB NOT NULL DEFAULT '[]',
+  "gold"           INTEGER NOT NULL DEFAULT 40,
+  "activeEffects"  JSONB NOT NULL DEFAULT '[]',
   "createdAt"   TIMESTAMPTZ DEFAULT NOW(),
   "updatedAt"   TIMESTAMPTZ DEFAULT NOW()
 );
@@ -46,3 +49,6 @@ CREATE TRIGGER characters_updated_at
 -- Migrações (para tabelas já existentes)
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "hitDiceUsed"        INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "skillProficiencies" JSONB   NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "equipment"          JSONB   NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "gold"               INTEGER NOT NULL DEFAULT 40;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "activeEffects"      JSONB   NOT NULL DEFAULT '[]';
