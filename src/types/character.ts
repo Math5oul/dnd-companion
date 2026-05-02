@@ -30,6 +30,8 @@ export interface Character {
   sorceryPoints?: { total: number; used: number };
   /** Dados de Vida usados (Short Rest). Reseta no Long Rest. */
   hitDiceUsed?: number;
+  /** IDs das perícias em que o personagem tem proficiência */
+  skillProficiencies?: string[];
   createdAt: string;
   updatedAt: string;
 }

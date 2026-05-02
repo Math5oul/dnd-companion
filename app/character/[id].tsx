@@ -19,6 +19,7 @@ import { getRaceById } from '../../src/data/races';
 import { getClassById } from '../../src/data/classes';
 import { getSpellById, getSpellDamage, getSpellDamageAtSlot, SCHOOL_ICON, SCHOOL_COLOR } from '../../src/data/spells';
 import { AbilityName } from '../../src/types/character';
+import { SKILLS, getProficiencyBonus, CLASS_SKILL_OPTIONS, CLASS_SKILL_COUNT } from '../../src/data/skills';
 import ConfirmModal from '../../src/components/ConfirmModal';
 import LevelUpModal from '../../src/components/LevelUpModal';
 import ShortRestModal from '../../src/components/ShortRestModal';
@@ -36,7 +37,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest } = useCharacterStore();
+  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
@@ -60,15 +61,29 @@ export default function CharacterSheet() {
   const [modal, setModal] = useState<ModalType>(null);
   const [noSlotLevel, setNoSlotLevel] = useState(0);
   const [statDetailKey, setStatDetailKey] = useState<AbilityName | null>(null);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [traitsOpen, setTraitsOpen] = useState(false);
 
   // { spellId -> { total, detail, expires } }
   const [rollResults, setRollResults] = useState<Record<string, { total: number; detail: string }>>({});
+  // skill roll results { skillId -> { total, detail } }
+  const [skillRolls, setSkillRolls] = useState<Record<string, { total: number; detail: string }>>({});
 
   const showRoll = (spellId: string, dmgStr: string) => {
     const result = rollDamage(dmgStr);
     setRollResults((prev) => ({ ...prev, [spellId]: result }));
     setTimeout(() => {
       setRollResults((prev) => { const n = { ...prev }; delete n[spellId]; return n; });
+    }, 4000);
+  };
+
+  const handleSkillRoll = (skillId: string, modifier: number) => {
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const total = d20 + modifier;
+    const detail = `[d20:${d20}${modifier >= 0 ? `+${modifier}` : modifier}]`;
+    setSkillRolls((prev) => ({ ...prev, [skillId]: { total, detail } }));
+    setTimeout(() => {
+      setSkillRolls((prev) => { const n = { ...prev }; delete n[skillId]; return n; });
     }, 4000);
   };
 
@@ -266,30 +281,150 @@ export default function CharacterSheet() {
         );
       })()}
 
+      {/* Perícias / Skills */}
+      {(() => {
+        const profBonus = getProficiencyBonus(char.level);
+        const profs = char.skillProficiencies ?? [];
+        const classOptions = CLASS_SKILL_OPTIONS[char.className] ?? [];
+        const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
+        // bard picks from all skills
+        const eligibleOptions = classOptions.length === 0
+          ? SKILLS.map((s) => s.id)
+          : classOptions;
+        const remainingPicks = Math.max(0, maxPicks - profs.length);
+        const abilityShortKey: Record<string, keyof typeof t> = {
+          strength: 'strengthShort', dexterity: 'dexterityShort',
+          constitution: 'constitutionShort', intelligence: 'intelligenceShort',
+          wisdom: 'wisdomShort', charisma: 'charismaShort',
+        };
+        return (
+          <>
+            {/* Header / Toggle drawer */}
+            <TouchableOpacity style={styles.skillsHeader} onPress={() => setSkillsOpen((v) => !v)} activeOpacity={0.8}>
+              <Text style={styles.sectionTitle}>{t.skillsSection}</Text>
+              <View style={styles.skillsHeaderRight}>
+                {remainingPicks > 0 && (
+                  <View style={styles.skillPicksBadge}>
+                    <Text style={styles.skillPicksBadgeText}>
+                      {t.skillPicksLeft(remainingPicks)}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.profBonusLabel}>{t.profBonusLabel(profBonus)}</Text>
+                <Text style={styles.skillDrawerToggle}>{skillsOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Drawer content */}
+            {skillsOpen && (
+              <>
+                {remainingPicks > 0 && (
+                  <Text style={styles.skillHint}>{t.skillPickHint}</Text>
+                )}
+                <View style={styles.skillsBlock}>
+                  {SKILLS.map((skill) => {
+                    const abilityScore = char.abilityScores[skill.ability] + (asiTotals[skill.ability] ?? 0);
+                    const abilityMod = Math.floor((abilityScore - 10) / 2);
+                    const isProficient = profs.includes(skill.id);
+                    const isEligible = eligibleOptions.includes(skill.id);
+                    const canPick = !isProficient && isEligible && remainingPicks > 0;
+                    const totalMod = abilityMod + (isProficient ? profBonus : 0);
+                    const roll = skillRolls[skill.id];
+                    const shortLabel = t[abilityShortKey[skill.ability]] as string;
+                    const skillName = language === 'en' ? skill.nameEn : skill.name;
+                    return (
+                      <TouchableOpacity
+                        key={skill.id}
+                        style={[
+                          styles.skillRow,
+                          roll && styles.skillRowActive,
+                          isProficient && styles.skillRowProficient,
+                        ]}
+                        onPress={() => handleSkillRoll(skill.id, totalMod)}
+                        activeOpacity={0.7}
+                      >
+                        {/* Dot — só aparece em skills elegíveis da classe */}
+                        {isEligible ? (
+                          isProficient ? (
+                            /* Já proficiente: dot cheio, não clicável */
+                            <View style={[styles.skillProfDot, styles.skillProfDotActive]} />
+                          ) : remainingPicks > 0 ? (
+                            /* Elegível + picks disponíveis: dot clicável */
+                            <TouchableOpacity
+                              onPress={() => addSkillProficiency(char.id, skill.id)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <View style={[styles.skillProfDot, styles.skillProfDotPickable]} />
+                            </TouchableOpacity>
+                          ) : (
+                            /* Elegível mas sem picks restantes: dot vazio */
+                            <View style={styles.skillProfDot} />
+                          )
+                        ) : (
+                          /* Não elegível: espaço vazio */
+                          <View style={styles.skillProfDotPlaceholder} />
+                        )}
+                        <Text style={[styles.skillName, isProficient && styles.skillNameProficient]}>
+                          {skillName}
+                        </Text>
+                        <Text style={[styles.skillAbility, isProficient && styles.skillAbilityProficient]}>
+                          {shortLabel}
+                        </Text>
+                        {roll ? (
+                          <Text style={styles.skillRollResult}>{roll.total} {roll.detail}</Text>
+                        ) : (
+                          <Text style={[styles.skillMod, isProficient && styles.skillModProficient]}>
+                            {totalMod >= 0 ? `+${totalMod}` : `${totalMod}`}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </>
+        );
+      })()}
+
       {/* Traits / Habilidades */}
       {(char.traits?.length ?? 0) > 0 && (() => {
-        // Collect all feature info by ID for display
         const allFeatures = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features);
         const allOptions = allFeatures.flatMap((f) => f.options ?? []);
         const traitMap = Object.fromEntries([
           ...allFeatures.map((f) => [f.id, { name: f.name, description: f.description }]),
           ...allOptions.map((o) => [o.id, { name: o.name, description: o.description }]),
         ]);
+        const count = (char.traits ?? []).filter((tid) => traitMap[tid]).length;
         return (
           <>
-            <Text style={styles.sectionTitle}>{t.features}</Text>
-            <View style={styles.traitsBlock}>
-              {(char.traits ?? []).map((tid) => {
-                const info = traitMap[tid];
-                if (!info) return null;
-                return (
-                  <View key={tid} style={styles.traitCard}>
-                    <Text style={styles.traitName}>{localizeFeatureName(tid, info.name, language)}</Text>
-                    <Text style={styles.traitDesc}>{localizeFeatureDesc(tid, convertTextDistances(info.description, units, language), language)}</Text>
-                  </View>
-                );
-              })}
-            </View>
+            <TouchableOpacity
+              style={styles.drawerHeader}
+              onPress={() => setTraitsOpen((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sectionTitle}>{t.features}</Text>
+              <View style={styles.drawerHeaderRight}>
+                <View style={styles.drawerCountBadge}>
+                  <Text style={styles.drawerCountText}>{count}</Text>
+                </View>
+                <Text style={styles.drawerToggleIcon}>{traitsOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+            {traitsOpen && (
+              <View style={styles.traitsBlock}>
+                {(char.traits ?? []).map((tid) => {
+                  const info = traitMap[tid];
+                  if (!info) return null;
+                  return (
+                    <View key={tid} style={styles.traitCard}>
+                      <Text style={styles.traitName}>{localizeFeatureName(tid, info.name, language)}</Text>
+                      <Text style={styles.traitDesc}>{localizeFeatureDesc(tid, convertTextDistances(info.description, units, language), language)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </>
         );
       })()}
@@ -855,6 +990,37 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
   },
   levelUpBtnText: { color: '#70e040', fontWeight: '700', fontSize: 15 },
 
+  // ── Drawer shared styles ───────────────────────────────────────────────────
+  drawerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  drawerHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  drawerCountBadge: {
+    backgroundColor: c.accent + '33',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: c.accent + '66',
+  },
+  drawerCountText: {
+    color: c.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  drawerToggleIcon: {
+    color: c.subtext,
+    fontSize: 13,
+  },
+
   traitsBlock: {
     gap: 8,
     marginBottom: 24,
@@ -958,5 +1124,129 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     color: '#e0c8ff',
     fontSize: 12,
     fontWeight: '600',
+  },
+
+  // ── Skills ────────────────────────────────────────────────────────────────
+  skillsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    paddingVertical: 4,
+  },
+  skillsHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  skillPicksBadge: {
+    backgroundColor: c.accent + '33',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: c.accent + '66',
+  },
+  skillPicksBadgeText: {
+    color: c.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  skillDrawerToggle: {
+    color: c.subtext,
+    fontSize: 13,
+    marginLeft: 4,
+  },
+  profBonusLabel: {
+    color: c.subtext,
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+  skillHint: {
+    color: c.accent,
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  skillsBlock: {
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+  skillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border + '55',
+  },
+  skillRowActive: {
+    backgroundColor: '#1a003044',
+    borderRadius: 6,
+  },
+  skillRowProficient: {
+    backgroundColor: c.accent + '11',
+  },
+  skillProfDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: c.subtext + '88',
+    backgroundColor: 'transparent',
+  },
+  skillProfDotPlaceholder: {
+    width: 12,
+    height: 12,
+  },
+  skillProfDotActive: {
+    backgroundColor: c.accent,
+    borderColor: c.accent,
+  },
+  skillProfDotPickable: {
+    borderColor: c.accent,
+    borderWidth: 2,
+  },
+  skillName: {
+    color: c.text,
+    fontSize: 13,
+    flex: 1,
+  },
+  skillNameProficient: {
+    color: c.accent,
+    fontWeight: '600',
+  },
+  skillAbility: {
+    color: c.subtext,
+    fontSize: 11,
+    width: 30,
+    textAlign: 'center',
+  },
+  skillAbilityProficient: {
+    color: c.accent + 'aa',
+  },
+  skillMod: {
+    color: c.subtext,
+    fontSize: 13,
+    fontWeight: '600',
+    width: 36,
+    textAlign: 'right',
+  },
+  skillModProficient: {
+    color: c.accent,
+    fontWeight: '800',
+  },
+  skillRollResult: {
+    color: '#f0e040',
+    fontSize: 13,
+    fontWeight: '800',
+    width: 120,
+    textAlign: 'right',
   },
 });

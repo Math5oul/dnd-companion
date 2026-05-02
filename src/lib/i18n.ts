@@ -113,6 +113,13 @@ const translations = {
     continueBtn: 'Continuar →',
     spellcasterTag: '✨ Conjurador',
     savesLabel: 'Saves',
+    // Skills
+    skillsSection: '🎯 Perícias',
+    profBonusLabel: (n: number) => `Bônus de Proficiência: +${n}`,
+    skillRollResult: (skill: string, total: number, detail: string) => `${skill}: ${total} ${detail}`,
+    proficientHint: 'Toque no ponto para alternar proficiência · Toque na linha para rolar',
+    skillPicksLeft: (n: number) => `${n} escolha${n !== 1 ? 's' : ''} restante${n !== 1 ? 's' : ''}`,
+    skillPickHint: 'Toque no ● para escolher uma proficiência (permanente)',
   },
 
   en: {
@@ -228,6 +235,13 @@ const translations = {
     continueBtn: 'Continue →',
     spellcasterTag: '✨ Spellcaster',
     savesLabel: 'Saves',
+    // Skills
+    skillsSection: '🎯 Skills',
+    profBonusLabel: (n: number) => `Proficiency Bonus: +${n}`,
+    skillRollResult: (skill: string, total: number, detail: string) => `${skill}: ${total} ${detail}`,
+    proficientHint: 'Tap dot to toggle proficiency · Tap row to roll',
+    skillPicksLeft: (n: number) => `${n} pick${n !== 1 ? 's' : ''} remaining`,
+    skillPickHint: 'Tap ● to pick a proficiency (permanent)',
   },
 } as const;
 

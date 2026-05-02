@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS characters (
   "spells"      JSONB NOT NULL DEFAULT '[]',
   "traits"         JSONB NOT NULL DEFAULT '[]',
   "sorceryPoints"  JSONB,
+  "hitDiceUsed"    INTEGER NOT NULL DEFAULT 0,
+  "skillProficiencies" JSONB NOT NULL DEFAULT '[]',
   "createdAt"   TIMESTAMPTZ DEFAULT NOW(),
   "updatedAt"   TIMESTAMPTZ DEFAULT NOW()
 );
@@ -40,3 +42,7 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER characters_updated_at
   BEFORE UPDATE ON characters
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Migrações (para tabelas já existentes)
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "hitDiceUsed"        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "skillProficiencies" JSONB   NOT NULL DEFAULT '[]';

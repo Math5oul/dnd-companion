@@ -49,6 +49,10 @@ interface CharacterStore {
   convertSlotToPoints: (characterId: string, slotLevel: number) => Promise<void>;
   /** Cria um spell slot gastando pontos de feitiçaria */
   convertPointsToSlot: (characterId: string, slotLevel: number) => Promise<void>;
+  /** Adiciona ou remove uma proficiência de perícia */
+  toggleSkillProficiency: (characterId: string, skillId: string) => Promise<void>;
+  /** Adiciona uma proficiência de perícia (só adiciona, não remove — escolha permanente) */
+  addSkillProficiency: (characterId: string, skillId: string) => Promise<void>;
 
   // CRUD
   fetchCharacters: () => Promise<void>;
@@ -382,6 +386,35 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, spellSlots: newSlots, sorceryPoints: newSorcery } : c
+      ),
+    }));
+  },
+
+  toggleSkillProficiency: async (characterId, skillId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.skillProficiencies ?? [];
+    const updated = current.includes(skillId)
+      ? current.filter((s) => s !== skillId)
+      : [...current, skillId];
+    await supabase.from('characters').update({ skillProficiencies: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, skillProficiencies: updated } : c
+      ),
+    }));
+  },
+
+  addSkillProficiency: async (characterId, skillId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.skillProficiencies ?? [];
+    if (current.includes(skillId)) return; // já tem, não faz nada
+    const updated = [...current, skillId];
+    await supabase.from('characters').update({ skillProficiencies: updated }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, skillProficiencies: updated } : c
       ),
     }));
   },
