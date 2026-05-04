@@ -95,6 +95,8 @@ interface CharacterStore {
   fetchCharacters: () => Promise<void>;
   saveCharacter: () => Promise<Character | null>;
   deleteCharacter: (id: string) => Promise<void>;
+  /** Importa um personagem a partir de dados JSON exportados */
+  importCharacter: (data: Omit<Character, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Character | null>;
 }
 
 export const useCharacterStore = create<CharacterStore>((set, get) => ({
@@ -251,6 +253,21 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       return;
     }
     set((s) => ({ characters: s.characters.filter((c) => c.id !== id) }));
+  },
+
+  importCharacter: async (data) => {
+    const { data: inserted, error } = await supabase
+      .from('characters')
+      .insert([data])
+      .select()
+      .single();
+    if (error) {
+      console.error('Erro ao importar personagem:', error.message);
+      return null;
+    }
+    if (!inserted) return null;
+    set((s) => ({ characters: [inserted as Character, ...s.characters] }));
+    return inserted as Character;
   },
 
   toggleSpell: async (characterId, spellId) => {

@@ -5,10 +5,13 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Share,
   Modal,
   TextInput,
+  Alert,
+  Platform,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
 import { useTabStore } from '../../src/store/tabStore';
@@ -331,19 +334,33 @@ export default function CharacterSheet() {
   const handleLongRestConfirm = () => setModal('longrest');
 
   const handleShare = async () => {
-    const text = [
-      `⚔️ ${char.name}`,
-      `${raceName} · ${className} · ${t.level} ${char.level}`,
-      `❤️ HP: ${char.hp}/${char.maxHp}`,
-      '',
-      `${t.attributes}:`,
-      ...ABILITIES.map(({ key, label }) => {
-          const total = char.abilityScores[key] + (asiTotals[key] ?? 0);
-          return `  ${label}: ${total} (${formatModifier(total)})`;
-        }),
-    ].join('\n');
+    try {
+      const { id: _id, createdAt: _c, updatedAt: _u, ...exportData } = char;
+      const json = JSON.stringify(exportData, null, 2);
+      const fileName = `${char.name.replace(/\s+/g, '_')}.dndchar`;
 
-    await Share.share({ message: text, title: char.name });
+      if (Platform.OS === 'web') {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(filePath, json, { encoding: FileSystem.EncodingType.UTF8 });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(filePath, { mimeType: 'application/json', dialogTitle: char.name, UTI: 'public.json' });
+        } else {
+          Alert.alert('Exportar', `Arquivo salvo em:\n${filePath}`);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao exportar personagem:', e);
+      Alert.alert('Erro', 'Não foi possível exportar o personagem.');
+    }
   };
 
   const hpPercent = char.maxHp > 0 ? char.hp / char.maxHp : 0;
@@ -365,7 +382,7 @@ export default function CharacterSheet() {
           </Text>
         </View>
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-          <Text style={styles.shareBtnText}>{t.share}</Text>
+          <Text style={styles.shareBtnText}>{t.exportChar}</Text>
         </TouchableOpacity>
       </View>
 
