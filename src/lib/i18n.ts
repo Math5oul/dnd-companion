@@ -10,7 +10,7 @@ const translations = {
     // Character sheet sections
     hitPoints: 'Pontos de Vida',
     attributes: 'Atributos',
-    spells: 'Magias',
+    spells: '🧙🏿‍♂️ Magias',
     cantrips: 'Truques',
     actions: 'Ações',
     features: '📜 Habilidades & Traits',
@@ -137,7 +137,7 @@ const translations = {
     // Character sheet sections
     hitPoints: 'Hit Points',
     attributes: 'Attributes',
-    spells: 'Spells',
+    spells: '🧙🏿‍♂️ Spells',
     cantrips: 'Cantrips',
     actions: 'Actions',
     features: '📜 Features & Traits',
