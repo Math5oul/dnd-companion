@@ -11,19 +11,22 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
   // BÁRBARO
   // ──────────────────────────────────────────────────────────────────────────
   barbarian_rage: {
+    // Resistências só aplicam enquanto o toggle de Furia estiver ativo
+    resistances: ['bludgeoning', 'piercing', 'slashing'],
     actions: [{
       id: 'rage',
       namePt: 'Fúria', nameEn: 'Rage',
       descPt: 'Bônus de dano em ataques de FOR, resistência a dano físico, vantagem em FOR. Dura 1 minuto.',
       descEn: 'Bonus damage on STR attacks, resistance to physical damage, advantage on STR checks. Lasts 1 minute.',
       useType: 'long_rest', maxUses: 2,
-      effectTag: 'rage', isToggle: true,
+      effectTag: 'rage', isToggle: true, activationCost: 'bonus',
     }],
   },
-  barbarian_rage_3:  { actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 3.', descEn: 'Uses increased to 3.', useType: 'long_rest', maxUses: 3, effectTag: 'rage', isToggle: true }] },
-  barbarian_rage_4:  { actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 4.', descEn: 'Uses increased to 4.', useType: 'long_rest', maxUses: 4, effectTag: 'rage', isToggle: true }] },
-  barbarian_rage_5:  { actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 5.', descEn: 'Uses increased to 5.', useType: 'long_rest', maxUses: 5, effectTag: 'rage', isToggle: true }] },
-  barbarian_rage_6:  { actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos ilimitados.', descEn: 'Unlimited uses.', useType: 'at_will', effectTag: 'rage', isToggle: true }] },
+  barbarian_rage_3:  { resistances: ['bludgeoning', 'piercing', 'slashing'], actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 3.', descEn: 'Uses increased to 3.', useType: 'long_rest', maxUses: 3, effectTag: 'rage', isToggle: true, activationCost: 'bonus' }] },
+  barbarian_rage_4:  { resistances: ['bludgeoning', 'piercing', 'slashing'], actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 4.', descEn: 'Uses increased to 4.', useType: 'long_rest', maxUses: 4, effectTag: 'rage', isToggle: true, activationCost: 'bonus' }] },
+  barbarian_rage_5:  { resistances: ['bludgeoning', 'piercing', 'slashing'], actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos aumentados para 5.', descEn: 'Uses increased to 5.', useType: 'long_rest', maxUses: 5, effectTag: 'rage', isToggle: true, activationCost: 'bonus' }] },
+  barbarian_rage_6:  { resistances: ['bludgeoning', 'piercing', 'slashing'], actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Usos ilimitados.', descEn: 'Unlimited uses.', useType: 'at_will', effectTag: 'rage', isToggle: true, activationCost: 'bonus' }] },
+  barbarian_rage_unlimited: { resistances: ['bludgeoning', 'piercing', 'slashing'], actions: [{ id: 'rage', namePt: 'Fúria', nameEn: 'Rage', descPt: 'Fúria Ilimitada.', descEn: 'Unlimited Rage.', useType: 'at_will', effectTag: 'rage', isToggle: true, activationCost: 'bonus' }] },
 
   // ──────────────────────────────────────────────────────────────────────────
   // BARDO
@@ -34,7 +37,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Inspiração Bárdica (d6)', nameEn: 'Bardic Inspiration (d6)',
       descPt: 'Conceda 1d6 de bônus à rolagem de um aliado como ação bônus. Usos = mod. de CAR por descanso curto.',
       descEn: 'Grant an ally 1d6 bonus to a roll as a bonus action. Uses = CHA mod per short rest.',
-      useType: 'short_rest', maxUses: 3, damageDice: '1d6',
+      useType: 'short_rest', maxUses: 3, damageDice: '1d6', activationCost: 'bonus',
     }],
   },
   bard_bardic_inspiration_d8: {
@@ -43,7 +46,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Inspiração Bárdica (d8)', nameEn: 'Bardic Inspiration (d8)',
       descPt: 'Dado de inspiração aumentado para d8.',
       descEn: 'Inspiration die increased to d8.',
-      useType: 'short_rest', maxUses: 3, damageDice: '1d8',
+      useType: 'short_rest', maxUses: 3, damageDice: '1d8', activationCost: 'bonus',
     }],
   },
   bard_bardic_inspiration_d10: {
@@ -52,7 +55,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Inspiração Bárdica (d10)', nameEn: 'Bardic Inspiration (d10)',
       descPt: 'Dado de inspiração aumentado para d10.',
       descEn: 'Inspiration die increased to d10.',
-      useType: 'short_rest', maxUses: 3, damageDice: '1d10',
+      useType: 'short_rest', maxUses: 3, damageDice: '1d10', activationCost: 'bonus',
     }],
   },
   bard_bardic_inspiration_d12: {
@@ -61,7 +64,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Inspiração Bárdica (d12)', nameEn: 'Bardic Inspiration (d12)',
       descPt: 'Dado de inspiração aumentado para d12.',
       descEn: 'Inspiration die increased to d12.',
-      useType: 'short_rest', maxUses: 4, damageDice: '1d12',
+      useType: 'short_rest', maxUses: 4, damageDice: '1d12', activationCost: 'bonus',
     }],
   },
 
@@ -118,7 +121,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Segundo Fôlego', nameEn: 'Second Wind',
       descPt: 'Ação bônus: recupere 1d10 + nível do guerreiro HP. 1 uso por descanso curto.',
       descEn: 'Bonus action: regain 1d10 + fighter level HP. 1 use per short rest.',
-      useType: 'short_rest', maxUses: 1, damageDice: '1d10',
+      useType: 'short_rest', maxUses: 1, damageDice: '1d10', activationCost: 'bonus',
     }],
   },
   fighter_action_surge_1: {
@@ -128,6 +131,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       descPt: 'Ganhe uma ação extra neste turno. 1 uso por descanso curto.',
       descEn: 'Gain one extra action this turn. 1 use per short rest.',
       useType: 'short_rest', maxUses: 1,
+      activationCost: 'free', grantsExtraActions: 1,
     }],
   },
   fighter_action_surge_2: {
@@ -137,6 +141,7 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       descPt: '2 usos por descanso curto.',
       descEn: '2 uses per short rest.',
       useType: 'short_rest', maxUses: 2,
+      activationCost: 'free', grantsExtraActions: 1,
     }],
   },
 
@@ -150,21 +155,21 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
         namePt: 'Torrente de Golpes', nameEn: 'Flurry of Blows',
         descPt: 'Gaste 1 ponto de ki: faça 2 ataques desarmados como ação bônus.',
         descEn: 'Spend 1 ki point: make 2 unarmed strikes as a bonus action.',
-        useType: 'short_rest', maxUses: 2, effectTag: 'ki_flurry', kiCost: 1,
+        useType: 'at_will', effectTag: 'ki_flurry', kiCost: 1, activationCost: 'bonus',
       },
       {
         id: 'ki_step',
         namePt: 'Passo do Vento', nameEn: 'Step of the Wind',
         descPt: 'Gaste 1 ponto de ki: Desviar ou Correr como ação bônus; salto dobrado.',
         descEn: 'Spend 1 ki point: Disengage or Dash as a bonus action; jump distance doubled.',
-        useType: 'short_rest', maxUses: 2, effectTag: 'ki_step', isToggle: true, kiCost: 1,
+        useType: 'at_will', effectTag: 'ki_step', isToggle: true, kiCost: 1, activationCost: 'bonus',
       },
       {
         id: 'ki_defense',
-        namePt: 'Defesa Sem Armadura', nameEn: 'Patient Defense',
+        namePt: 'Defesa sem Armadura', nameEn: 'Patient Defense',
         descPt: 'Gaste 1 ponto de ki: Esquivar como ação bônus.',
         descEn: 'Spend 1 ki point: Dodge as a bonus action.',
-        useType: 'short_rest', maxUses: 2, effectTag: 'ki_dodge', isToggle: true, kiCost: 1,
+        useType: 'at_will', effectTag: 'ki_dodge', isToggle: true, kiCost: 1, activationCost: 'bonus',
       },
     ],
   },
@@ -205,10 +210,26 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
   rogue_sneak_attack_5d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (5d6)', nameEn: 'Sneak Attack (5d6)', descPt: '+5d6 de dano furtivo.', descEn: '+5d6 sneak damage.', useType: 'at_will', damageDice: '5d6' }] },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // RAÇAS — bônus de atributos
-  // ──────────────────────────────────────────────────────────────────────────
-  // (Bônus raciais já estão em races.ts → abilityBonuses e são aplicados na criação)
-  // Aqui cobrimos ações raciais
+  // BÁRBARO — Movimento Rápido (nível 7)
+  // ────────────────────────────────────────────────────────────────────────────
+  barbarian_fast_movement: {
+    speedBonus: 10,
+    speedRequiresUnarmored: true, // sem armadura pesada (mapeado como sem armadura)
+  },
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // MONGE — Movimento Sem Armadura
+  // ────────────────────────────────────────────────────────────────────────────
+  monk_unarmored_movement_10ft: { speedBonus: 10, speedRequiresUnarmored: true },
+  monk_unarmored_movement_15ft: { speedBonus: 15, speedRequiresUnarmored: true },
+  monk_unarmored_movement_20ft: { speedBonus: 20, speedRequiresUnarmored: true },
+  monk_unarmored_movement_25ft: { speedBonus: 25, speedRequiresUnarmored: true },
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // RAÇAS — resistências e ações raciais
+  // ────────────────────────────────────────────────────────────────────────────
+  // (Bônus de atributos raciais estão em races.ts e são aplicados na criação)
+  // Resistências raciais são tratadas diretamente em computeCharacterStats
 };
 
 /**

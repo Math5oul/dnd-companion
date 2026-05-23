@@ -22,7 +22,7 @@ const LEVEL_LABELS_EN = ['Cantrip', '1st', '2nd', '3rd', '4th', '5th'];
 export default function SpellSelection() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, toggleSpell } = useCharacterStore();
+  const { characters, toggleSpell, setConcentration } = useCharacterStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
   const styles = useMemo(() => makeStyles(themeColors), [theme]);
@@ -35,6 +35,8 @@ export default function SpellSelection() {
   const [filterLevel, setFilterLevel] = useState<number | null>(null);
 
   const knownSpells = new Set(char?.spells ?? []);
+
+  const isConcentration = (spell: Spell) => spell.duration.toLowerCase().startsWith('concentra');
 
   // Limites por nível do personagem
   const levelIndex = (char?.level ?? 1) - 1;
@@ -126,6 +128,9 @@ export default function SpellSelection() {
             <View style={styles.spellNameRow}>
               <Text style={[styles.spellName, known && styles.spellNameKnown]}>{localizeSpellName(spell, language)}</Text>
               {known && <Text style={styles.checkmark}>✓</Text>}
+              {isConcentration(spell) && (
+                <Text style={styles.concBadge}>🔮 {language === 'en' ? 'C' : 'C'}</Text>
+              )}
             </View>
             <Text style={[styles.schoolLabel, { color: schoolColor }]}>
               {convertSchool(spell.school, language)}
@@ -323,6 +328,15 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   spellName: { color: c.subtext, fontSize: 15, fontWeight: '700' },
   spellNameKnown: { color: c.accent },
   checkmark: { color: '#50d080', fontSize: 14, fontWeight: 'bold' },
+  concBadge: {
+    backgroundColor: '#7b2fff22',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    color: '#a78bfa',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   schoolLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
   spellDesc: { color: c.subtext, fontSize: 12, lineHeight: 17, marginBottom: 6 },
   spellMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

@@ -10,8 +10,14 @@ export interface CatalogEntry {
   duration?: 'forever' | 'long_rest';
   charges?: number;
   maxCharges?: number;
-  useEffect?: { type: 'heal' | 'temp_hp'; dice: string };
+  useEffect?: { type: 'heal' | 'temp_hp' | 'damage'; dice: string; damageType?: string };
   bonuses: EquipmentBonus[];
+  weaponCategory?: 'simple' | 'martial';
+  weaponHands?: 'one' | 'two';
+  /** Armor category — determines DEX contribution to AC */
+  armorCategory?: 'light' | 'medium' | 'heavy';
+  /** Base AC for categorized armors (DEX bonus computed by formula) */
+  baseAC?: number;
   /** Weight in lbs */
   weight?: number;
   traitsEn: string[];
@@ -30,6 +36,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   // ──────────────────────────────────────────────────────────────────────────
   {
     nameEn: 'Dagger', namePt: 'Adaga', type: 'weapon', goldValue: 2, weight: 1,
+    weaponCategory: 'simple', weaponHands: 'one',
     descEn: 'Finesse, light, thrown. Edit the attack bonus to add your proficiency + STR or DEX modifier.',
     descPt: 'Finesse, leve, arremessável. Edite o bônus de ataque para incluir sua proficiência + mod de FOR ou DES.',
     bonuses: [],
@@ -39,6 +46,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Club', namePt: 'Clava', type: 'weapon', goldValue: 0, weight: 2,
+    weaponCategory: 'simple', weaponHands: 'one',
     descEn: 'Light simple weapon. Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Arma simples leve. Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -48,6 +56,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Handaxe', namePt: 'Machadinha', type: 'weapon', goldValue: 5, weight: 2,
+    weaponCategory: 'simple', weaponHands: 'one',
     descEn: 'Light, thrown (20/60 ft). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Leve, arremessável (20/60 ft). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -57,6 +66,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Javelin', namePt: 'Dardo', type: 'weapon', goldValue: 1, weight: 2,
+    weaponCategory: 'simple', weaponHands: 'one',
     descEn: 'Thrown (30/120 ft). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Arremessável (30/120 ft). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -65,8 +75,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     attacks: [a('atk1', 'Throw / Arremessar', 0, '1d6', 'piercing', '30/120 ft')],
   },
   {
-    nameEn: 'Quarterstaff', namePt: 'Bordão', type: 'weapon', goldValue: 0, weight: 4,
-    descEn: 'Versatile (1d8 two-handed). Edit attack bonus to add proficiency + STR mod.',
+    nameEn: 'Quarterstaff', namePt: 'Bordão', type: 'weapon', goldValue: 0, weight: 4,    weaponCategory: 'simple', weaponHands: 'one',    descEn: 'Versatile (1d8 two-handed). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Versátil (1d8 com duas mãos). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
     traitsEn: ['Versatile — deals 1d8 when wielded two-handed'],
@@ -78,6 +87,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Shortbow', namePt: 'Arco Curto', type: 'weapon', goldValue: 25, weight: 2,
+    weaponCategory: 'simple', weaponHands: 'two',
     descEn: 'Ammunition, range 80/320 ft, two-handed. Edit attack bonus to add proficiency + DEX mod.',
     descPt: 'Munição, alcance 80/320 ft, duas mãos. Edite o bônus para incluir proficiência + mod de DES.',
     bonuses: [],
@@ -87,6 +97,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Light Crossbow', namePt: 'Besta Leve', type: 'weapon', goldValue: 25, weight: 5,
+    weaponCategory: 'simple', weaponHands: 'two',
     descEn: 'Ammunition, loading, range 80/320 ft, two-handed. Edit attack bonus to add proficiency + DEX mod.',
     descPt: 'Munição, carregamento, alcance 80/320 ft, duas mãos. Edite o bônus para incluir proficiência + mod de DES.',
     bonuses: [],
@@ -100,6 +111,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   // ──────────────────────────────────────────────────────────────────────────
   {
     nameEn: 'Shortsword', namePt: 'Espada Curta', type: 'weapon', goldValue: 10, weight: 2,
+    weaponCategory: 'martial', weaponHands: 'one',
     descEn: 'Finesse, light. Edit attack bonus to add proficiency + STR or DEX mod.',
     descPt: 'Finesse, leve. Edite o bônus para incluir proficiência + mod de FOR ou DES.',
     bonuses: [],
@@ -109,6 +121,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Longsword', namePt: 'Espada Longa', type: 'weapon', goldValue: 15, weight: 3,
+    weaponCategory: 'martial', weaponHands: 'one',
     descEn: 'Versatile (1d10 two-handed). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Versátil (1d10 com duas mãos). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -121,6 +134,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Rapier', namePt: 'Rapieira', type: 'weapon', goldValue: 25, weight: 2,
+    weaponCategory: 'martial', weaponHands: 'one',
     descEn: 'Finesse. Edit attack bonus to add proficiency + STR or DEX mod.',
     descPt: 'Finesse. Edite o bônus para incluir proficiência + mod de FOR ou DES.',
     bonuses: [],
@@ -130,6 +144,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Battleaxe', namePt: 'Machado de Batalha', type: 'weapon', goldValue: 10, weight: 4,
+    weaponCategory: 'martial', weaponHands: 'one',
     descEn: 'Versatile (1d10 two-handed). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Versátil (1d10 com duas mãos). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -142,6 +157,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Warhammer', namePt: 'Martelo de Guerra', type: 'weapon', goldValue: 15, weight: 2,
+    weaponCategory: 'martial', weaponHands: 'one',
     descEn: 'Versatile (1d10 two-handed). Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Versátil (1d10 com duas mãos). Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -154,6 +170,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Greatsword', namePt: 'Espada Grande', type: 'weapon', goldValue: 50, weight: 6,
+    weaponCategory: 'martial', weaponHands: 'two',
     descEn: 'Heavy, two-handed. Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Pesada, duas mãos. Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -163,6 +180,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Maul', namePt: 'Malho', type: 'weapon', goldValue: 10, weight: 10,
+    weaponCategory: 'martial', weaponHands: 'two',
     descEn: 'Heavy, two-handed. Edit attack bonus to add proficiency + STR mod.',
     descPt: 'Pesada, duas mãos. Edite o bônus para incluir proficiência + mod de FOR.',
     bonuses: [],
@@ -172,6 +190,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
   },
   {
     nameEn: 'Longbow', namePt: 'Arco Longo', type: 'weapon', goldValue: 50, weight: 2,
+    weaponCategory: 'martial', weaponHands: 'two',
     descEn: 'Heavy, two-handed, range 150/600 ft. Edit attack bonus to add proficiency + DEX mod.',
     descPt: 'Pesada, duas mãos, alcance 150/600 ft. Edite o bônus para incluir proficiência + mod de DES.',
     bonuses: [],
@@ -180,8 +199,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     attacks: [a('atk1', 'Arrow / Flecha', 0, '1d8', 'piercing', '150/600 ft')],
   },
   {
-    nameEn: 'Hand Crossbow', namePt: 'Besta de Mão', type: 'weapon', goldValue: 75, weight: 3,
-    descEn: 'Light, ammunition, loading, range 30/120 ft. Edit attack bonus to add proficiency + DEX mod.',
+    nameEn: 'Hand Crossbow', namePt: 'Besta de Mão', type: 'weapon', goldValue: 75, weight: 3,    weaponCategory: 'martial', weaponHands: 'one',    descEn: 'Light, ammunition, loading, range 30/120 ft. Edit attack bonus to add proficiency + DEX mod.',
     descPt: 'Leve, munição, carregamento, alcance 30/120 ft. Edite o bônus para incluir proficiência + mod de DES.',
     bonuses: [],
     traitsEn: ['Light', 'Ammunition', 'Loading', 'Range — 30/120 ft'],
@@ -196,7 +214,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Leather Armor', namePt: 'Armadura de Couro', type: 'armor', goldValue: 10, weight: 10,
     descEn: 'Light armor. Base AC 11 + DEX modifier.',
     descPt: 'Armadura leve. CA base 11 + mod de DES.',
-    bonuses: [{ type: 'ac', value: 1 }],
+    armorCategory: 'light', baseAC: 11,
+    bonuses: [],
     traitsEn: ['Light armor — AC 11 + DEX mod'],
     traitsPt: ['Armadura leve — CA 11 + mod DES'],
     attacks: [],
@@ -205,7 +224,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Studded Leather', namePt: 'Couro Cravejado', type: 'armor', goldValue: 45, weight: 13,
     descEn: 'Light armor. Base AC 12 + DEX modifier.',
     descPt: 'Armadura leve. CA base 12 + mod de DES.',
-    bonuses: [{ type: 'ac', value: 2 }],
+    armorCategory: 'light', baseAC: 12,
+    bonuses: [],
     traitsEn: ['Light armor — AC 12 + DEX mod'],
     traitsPt: ['Armadura leve — CA 12 + mod DES'],
     attacks: [],
@@ -214,7 +234,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Chain Shirt', namePt: 'Camisola de Cota de Malha', type: 'armor', goldValue: 50, weight: 20,
     descEn: 'Medium armor. AC 13 + DEX modifier (max +2).',
     descPt: 'Armadura média. CA 13 + mod de DES (máx +2).',
-    bonuses: [{ type: 'ac', value: 3 }],
+    armorCategory: 'medium', baseAC: 13,
+    bonuses: [],
     traitsEn: ['Medium armor — AC 13 + DEX mod (max +2)'],
     traitsPt: ['Armadura média — CA 13 + mod DES (máx +2)'],
     attacks: [],
@@ -223,7 +244,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Scale Mail', namePt: 'Cota de Escamas', type: 'armor', goldValue: 50, weight: 45,
     descEn: 'Medium armor. AC 14 + DEX modifier (max +2). Disadvantage on Stealth.',
     descPt: 'Armadura média. CA 14 + mod de DES (máx +2). Desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 4 }],
+    armorCategory: 'medium', baseAC: 14,
+    bonuses: [],
     traitsEn: ['Medium armor — AC 14 + DEX mod (max +2)', 'Stealth disadvantage'],
     traitsPt: ['Armadura média — CA 14 + mod DES (máx +2)', 'Desvantagem em Furtividade'],
     attacks: [],
@@ -232,7 +254,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Breastplate', namePt: 'Peitoral', type: 'armor', goldValue: 400, weight: 20,
     descEn: 'Medium armor. AC 14 + DEX modifier (max +2). No Stealth disadvantage.',
     descPt: 'Armadura média. CA 14 + mod de DES (máx +2). Sem desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 4 }],
+    armorCategory: 'medium', baseAC: 14,
+    bonuses: [],
     traitsEn: ['Medium armor — AC 14 + DEX mod (max +2)'],
     traitsPt: ['Armadura média — CA 14 + mod DES (máx +2)'],
     attacks: [],
@@ -241,7 +264,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Half Plate', namePt: 'Meia Armadura', type: 'armor', goldValue: 750, weight: 40,
     descEn: 'Medium armor. AC 15 + DEX modifier (max +2). Disadvantage on Stealth.',
     descPt: 'Armadura média. CA 15 + mod de DES (máx +2). Desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 5 }],
+    armorCategory: 'medium', baseAC: 15,
+    bonuses: [],
     traitsEn: ['Medium armor — AC 15 + DEX mod (max +2)', 'Stealth disadvantage'],
     traitsPt: ['Armadura média — CA 15 + mod DES (máx +2)', 'Desvantagem em Furtividade'],
     attacks: [],
@@ -250,7 +274,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Chain Mail', namePt: 'Cota de Malha', type: 'armor', goldValue: 75, weight: 55,
     descEn: 'Heavy armor. AC 16. Requires STR 13. Disadvantage on Stealth.',
     descPt: 'Armadura pesada. CA 16. Requer FOR 13. Desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 6 }],
+    armorCategory: 'heavy', baseAC: 16,
+    bonuses: [],
     traitsEn: ['Heavy armor — AC 16', 'Requires STR 13', 'Stealth disadvantage'],
     traitsPt: ['Armadura pesada — CA 16', 'Requer FOR 13', 'Desvantagem em Furtividade'],
     attacks: [],
@@ -259,7 +284,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Splint', namePt: 'Armadura de Talas', type: 'armor', goldValue: 200, weight: 60,
     descEn: 'Heavy armor. AC 17. Requires STR 15. Disadvantage on Stealth.',
     descPt: 'Armadura pesada. CA 17. Requer FOR 15. Desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 7 }],
+    armorCategory: 'heavy', baseAC: 17,
+    bonuses: [],
     traitsEn: ['Heavy armor — AC 17', 'Requires STR 15', 'Stealth disadvantage'],
     traitsPt: ['Armadura pesada — CA 17', 'Requer FOR 15', 'Desvantagem em Furtividade'],
     attacks: [],
@@ -268,7 +294,8 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Plate Armor', namePt: 'Armadura de Placas', type: 'armor', goldValue: 1500, weight: 65,
     descEn: 'Heavy armor. AC 18. Requires STR 15. Disadvantage on Stealth.',
     descPt: 'Armadura pesada. CA 18. Requer FOR 15. Desvantagem em Furtividade.',
-    bonuses: [{ type: 'ac', value: 8 }],
+    armorCategory: 'heavy', baseAC: 18,
+    bonuses: [],
     traitsEn: ['Heavy armor — AC 18', 'Requires STR 15', 'Stealth disadvantage'],
     traitsPt: ['Armadura pesada — CA 18', 'Requer FOR 15', 'Desvantagem em Furtividade'],
     attacks: [],
@@ -421,12 +448,13 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     nameEn: 'Potion of Fire Breath', namePt: 'Poção de Sopro de Fogo', type: 'consumable', goldValue: 150, weight: 0.5,
     charges: 3, maxCharges: 3,
     duration: 'long_rest',
-    descEn: 'Drink once to activate 3 fire breath charges. Bonus action: 30-ft cone, 4d6 fire (DEX DC 13 half). Removed after 3 attacks or Long Rest.',
-    descPt: 'Beba uma vez para ativar 3 cargas de sopro de fogo. Ação bônus: cone 9m, 4d6 fogo (DES TR 13 metade). Removida após 3 ataques ou Descanso Longo.',
+    useEffect: { type: 'damage', dice: '4d6', damageType: 'fire' },
+    descEn: '3 charges. Bonus action: exhale fire in a 30-ft cone, 4d6 fire damage (DEX DC 13, half on save).',
+    descPt: '3 cargas. Ação bônus: sopro de fogo em cone de 9m, 4d6 dano de fogo (DES TR 13, metade no sucesso).',
     bonuses: [],
-    traitsEn: ['Drink once — activates 3 fire breath charges', 'Bonus action: 30-ft cone, 4d6 fire, DEX DC 13 half', 'Removed after all 3 charges or Long Rest'],
-    traitsPt: ['Beba uma vez — ativa 3 cargas de sopro de fogo', 'Ação bônus: cone 9m, 4d6 fogo, DES TR 13 metade', 'Removida após 3 cargas ou Descanso Longo'],
-    attacks: [a('atk1', '🔥 Fire Breath / Sopro de Fogo', 0, '4d6', 'fire', '30 ft cone')],
+    traitsEn: [],
+    traitsPt: [],
+    attacks: [],
   },
   {
     nameEn: 'Antitoxin', namePt: 'Antitoxina', type: 'consumable', goldValue: 50, weight: 0,

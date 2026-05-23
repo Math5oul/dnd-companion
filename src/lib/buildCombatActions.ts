@@ -1,5 +1,5 @@
 import type { Character, AbilityName } from '../types/character';
-import type { CombatAction, CombatModifier } from '../types/combatAction';
+import type { CombatAction, CombatModifier, ActionCost } from '../types/combatAction';
 import { getModifier } from './dice';
 import { getProficiencyBonus } from '../data/skills';
 
@@ -230,7 +230,7 @@ export function buildCombatActions(char: Character): CombatAction[] {
         descPt: fa.descPt,
         descEn: fa.descEn,
         icon: '⚡',
-        actionCost: fa.useType === 'at_will' ? 'action' : 'action',
+        actionCost: fa.activationCost ?? 'action',
         tags: [...tags, 'magical'] as CombatAction['tags'],
         damage: fa.damageDice,
         damageType: fa.damageType,
@@ -246,6 +246,70 @@ export function buildCombatActions(char: Character): CombatAction[] {
     }
   } catch {
     // featureEffects not available in SSR / test
+  }
+
+  // ─── Magias ────────────────────────────────────────────────
+  try {
+    /* eslint-disable @typescript-eslint/no-var-requires */
+    const { getSpellById, getSpellDamage, SCHOOL_ICON } = require('../data/spells') as typeof import('../data/spells');
+    const { spellAttackBonus } = require('./metamagic') as typeof import('./metamagic');
+    /* eslint-enable @typescript-eslint/no-var-requires */
+
+    const spellAtk = spellAttackBonus(char);
+    const spellDC  = 8 + spellAtk;
+
+    /** Mapeia o texto de tempo de conjuração para ActionCost */
+    const castingTimeToActionCost = (ct: string): ActionCost => {
+      const s = ct.toLowerCase();
+      if (s.includes('bônus') || s.includes('bonus')) return 'bonus';
+      if (s.includes('reação') || s.includes('reaction')) return 'reaction';
+      return 'action';
+    };
+
+    for (const spellId of char.spells ?? []) {
+      const sp = getSpellById(spellId);
+      if (!sp) continue;
+
+      // Slots disponíveis para magias niveladas
+      const slotEntry = sp.level > 0 ? char.spellSlots?.[sp.level] : null;
+      const slotsRemaining = slotEntry ? slotEntry.total - slotEntry.used : 0;
+      if (sp.level > 0 && slotsRemaining <= 0) {
+        // Inclui com flag de esgotado para exibir na UI (cinza)
+      }
+
+      // Dano base (para cantrip considera escala de nível)
+      const fullDmg = sp.level === 0 ? getSpellDamage(sp, char.level) : (sp.damage ?? null);
+      const dmgParts = fullDmg?.match(/^([^\s]+)\s*(.*)/);
+      const dmgDice = dmgParts?.[1] ?? undefined;
+      const dmgType = dmgParts?.[2] || undefined;
+
+      actions.push({
+        id: `spell:${sp.id}`,
+        source: 'spell',
+        sourceNamePt: 'Magia',
+        sourceNameEn: 'Spell',
+        namePt: sp.name,
+        nameEn: sp.name,
+        descPt: sp.description,
+        descEn: sp.description,
+        icon: SCHOOL_ICON[sp.school] ?? '🪄',
+        actionCost: castingTimeToActionCost(sp.castingTime),
+        tags: ['magical'],
+        attackBonus: sp.attackRoll ? spellAtk : undefined,
+        damage: dmgDice,
+        damageType: dmgType,
+        range: sp.range,
+        modifiers: [],
+        spellId: sp.id,
+        spellLevel: sp.level,
+        spellSlotsRemaining: sp.level === 0 ? Infinity : slotsRemaining,
+        isSpellAttack: sp.attackRoll,
+        savingThrow: sp.savingThrow ? { ability: sp.savingThrow.ability, abilityEn: sp.savingThrow.abilityEn } : undefined,
+        useType: sp.level === 0 ? 'at_will' : undefined,
+      });
+    }
+  } catch {
+    // spells / metamagic not available in SSR / test
   }
 
   return actions;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../types/character';
-import { SKILLS, getProficiencyBonus } from '../data/skills';
+import { getProficiencyBonus } from '../data/skills';
 
 function getModifier(score: number) { return Math.floor((score - 10) / 2); }
 function fmtMod(n: number) { return n >= 0 ? `+${n}` : `${n}`; }
@@ -14,12 +14,23 @@ function rollD20(adv: 'normal' | 'adv' | 'dis') {
 }
 
 type TC = { bg: string; surface: string; accent: string; text: string; subtext: string; border: string };
+type ActionCost = 'action' | 'bonus' | 'reaction' | 'none';
+
+const COST_CFG = {
+  action:   { symbol: 'A',  icon: '🎯', color: '#e07b39' },
+  bonus:    { symbol: 'BA', icon: '⚡', color: '#3da1c8' },
+  reaction: { symbol: 'R',  icon: '🛡️', color: '#9c5de0' },
+} as const;
 
 interface Props {
   char: Character;
   language: 'pt' | 'en';
   themeColors: TC;
   activeTraitEffects: Set<string>;
+  canUseAction?: boolean;
+  canUseBonus?: boolean;
+  canUseReaction?: boolean;
+  onConsumeAction?: (cost: 'action' | 'bonus' | 'reaction') => void;
 }
 
 interface Maneuver {
@@ -29,6 +40,7 @@ interface Maneuver {
   nameEn: string;
   costPt: string;
   costEn: string;
+  actionCost: ActionCost;
   descPt: string;
   descEn: string;
   notePt?: string;
@@ -39,7 +51,11 @@ interface Maneuver {
   rollLabelEn?: string;
 }
 
-export default function CombatManeuvers({ char, language, themeColors: c, activeTraitEffects }: Props) {
+export default function CombatManeuvers({
+  char, language, themeColors: c, activeTraitEffects,
+  canUseAction = true, canUseBonus = true, canUseReaction = true,
+  onConsumeAction,
+}: Props) {
   const [results, setResults] = useState<Record<string, { total: number; detail: string }>>({});
 
   const prof = getProficiencyBonus(char.level);
@@ -71,8 +87,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'dash',
       icon: '🏃',
       namePt: 'Disparada', nameEn: 'Dash',
-      costPt: kiStepActive ? '⚡ Ação Bônus (Passo do Vento)' : 'Ação',
-      costEn: kiStepActive ? '⚡ Bonus Action (Step of the Wind)' : 'Action',
+      costPt: kiStepActive ? '⚡ Passo do Vento' : 'Ação',
+      costEn: kiStepActive ? '⚡ Step of the Wind' : 'Action',
+      actionCost: kiStepActive ? 'bonus' : 'action',
       descPt: 'Sua velocidade de movimento é dobrada este turno.',
       descEn: 'Your movement speed is doubled this turn.',
     },
@@ -80,8 +97,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'disengage',
       icon: '🏃‍♂️',
       namePt: 'Desengajar', nameEn: 'Disengage',
-      costPt: kiStepActive ? '⚡ Ação Bônus (Passo do Vento)' : 'Ação',
-      costEn: kiStepActive ? '⚡ Bonus Action (Step of the Wind)' : 'Action',
+      costPt: kiStepActive ? '⚡ Passo do Vento' : 'Ação',
+      costEn: kiStepActive ? '⚡ Step of the Wind' : 'Action',
+      actionCost: kiStepActive ? 'bonus' : 'action',
       descPt: 'Seu movimento não provoca ataques de oportunidade este turno.',
       descEn: "Your movement doesn't provoke opportunity attacks this turn.",
     },
@@ -89,8 +107,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'dodge',
       icon: '🛡️',
       namePt: 'Esquivar', nameEn: 'Dodge',
-      costPt: kiDodgeActive ? '⚡ Ação Bônus (Defesa sem Armadura)' : 'Ação',
-      costEn: kiDodgeActive ? '⚡ Bonus Action (Patient Defense)' : 'Action',
+      costPt: kiDodgeActive ? '⚡ Defesa sem Armadura' : 'Ação',
+      costEn: kiDodgeActive ? '⚡ Patient Defense' : 'Action',
+      actionCost: kiDodgeActive ? 'bonus' : 'action',
       descPt: 'Atacantes têm desvantagem. Você tem vantagem em testes de DEX.',
       descEn: 'Attackers have disadvantage. You have advantage on DEX saving throws.',
     },
@@ -100,6 +119,7 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       namePt: 'Esconder', nameEn: 'Hide',
       costPt: 'Ação',
       costEn: 'Action',
+      actionCost: 'action',
       descPt: 'Teste de Furtividade para ficar oculto.',
       descEn: 'Stealth check to become hidden.',
       rollBonus: stealthBonus,
@@ -112,6 +132,7 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       namePt: 'Ajudar', nameEn: 'Help',
       costPt: 'Ação',
       costEn: 'Action',
+      actionCost: 'action',
       descPt: 'Um aliado tem vantagem no próximo ataque ou teste de habilidade.',
       descEn: 'An ally has advantage on their next attack roll or ability check.',
     },
@@ -121,6 +142,7 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       namePt: 'Preparar', nameEn: 'Ready',
       costPt: 'Ação',
       costEn: 'Action',
+      actionCost: 'action',
       descPt: 'Prepare uma ação para ser acionada como reação a um gatilho.',
       descEn: 'Prepare an action to trigger as a reaction to a specific trigger.',
     },
@@ -128,8 +150,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'grapple',
       icon: '💪',
       namePt: 'Agarrar', nameEn: 'Grapple',
-      costPt: 'Ação (parte de ataque)',
-      costEn: 'Action (part of attack)',
+      costPt: 'Parte do Ataque',
+      costEn: 'Part of Attack',
+      actionCost: 'none',
       descPt: 'Atletismo vs Atletismo ou Acrobacia do alvo. Sucesso → alvo fica Agarrado.',
       descEn: "Athletics vs target's Athletics or Acrobatics. Success → target is Grappled.",
       notePt: rageActive ? '⚡ Fúria: Vantagem em Atletismo' : undefined,
@@ -143,8 +166,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'shove',
       icon: '🫸',
       namePt: 'Empurrar', nameEn: 'Shove',
-      costPt: 'Ação (parte de ataque)',
-      costEn: 'Action (part of attack)',
+      costPt: 'Parte do Ataque',
+      costEn: 'Part of Attack',
+      actionCost: 'none',
       descPt: 'Atletismo vs Atletismo/Acrobacia para derrubar (Caído) ou afastar 1,5m.',
       descEn: 'Athletics vs Athletics/Acrobatics to knock prone or push 5 ft.',
       notePt: rageActive ? '⚡ Fúria: Vantagem em Atletismo' : undefined,
@@ -158,8 +182,9 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       id: 'acrobatics_escape',
       icon: '🤸',
       namePt: 'Escapar (Acrobacia)', nameEn: 'Escape (Acrobatics)',
-      costPt: 'Parte do movimento',
-      costEn: 'Part of movement',
+      costPt: 'Parte do Movimento',
+      costEn: 'Part of Movement',
+      actionCost: 'none',
       descPt: 'Acrobacia vs Atletismo do agarrador para escapar de uma garra.',
       descEn: "Acrobatics vs grappler's Athletics to escape a grapple.",
       rollBonus: acrobaticsBonus,
@@ -177,54 +202,90 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
     'Reaction': '#9c5de0',
   };
 
+  const styles = makeStyles(c);
+
   return (
     <View>
       {maneuvers.map((m) => {
         const result = results[m.id];
         const cost = pt ? m.costPt : m.costEn;
-        const isBonus = cost.includes('Bônus') || cost.includes('Bonus');
+        const isBonus = cost.includes('Bônus') || cost.includes('Bonus') || cost.includes('Passo') || cost.includes('Step') || cost.includes('Defesa') || cost.includes('Patient');
         const costColor = isBonus ? '#3da1c8' : '#e07b39';
         const note = pt ? m.notePt : m.noteEn;
 
+        // Action economy
+        const costCfg = m.actionCost !== 'none' ? COST_CFG[m.actionCost] : null;
+        const canConsume =
+          m.actionCost === 'action'   ? canUseAction :
+          m.actionCost === 'bonus'    ? canUseBonus :
+          m.actionCost === 'reaction' ? canUseReaction : false;
+
+        const handleConsume = () => {
+          if (m.rollBonus !== undefined) roll(m.id, m.rollBonus, m.rollAdv ?? 'normal');
+          if (m.actionCost !== 'none' && onConsumeAction) onConsumeAction(m.actionCost);
+        };
+
         return (
-          <View key={m.id} style={{
-            backgroundColor: c.surface, borderRadius: 10,
-            borderWidth: 1, borderColor: c.border, padding: 10, marginBottom: 6,
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>{m.icon}</Text>
+          <View
+            key={m.id}
+            style={[styles.card, !canConsume && m.actionCost !== 'none' && styles.cardDisabled]}
+          >
+            <View style={styles.topRow}>
+              <Text style={styles.icon}>{m.icon}</Text>
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                  <Text style={{ color: c.text, fontWeight: '700', fontSize: 14 }}>
+                <View style={styles.nameRow}>
+                  <Text style={[styles.name, { color: c.text }]}>
                     {pt ? m.namePt : m.nameEn}
                   </Text>
-                  <View style={{ borderRadius: 4, borderWidth: 1, borderColor: costColor + '88', backgroundColor: costColor + '22', paddingHorizontal: 5, paddingVertical: 1 }}>
-                    <Text style={{ color: costColor, fontSize: 10, fontWeight: '700' }}>{cost}</Text>
+                  <View style={[styles.costBadge, { borderColor: costColor + '88', backgroundColor: costColor + '22' }]}>
+                    <Text style={[styles.costText, { color: costColor }]}>{cost}</Text>
                   </View>
                 </View>
-                <Text style={{ color: c.subtext, fontSize: 11 }}>{pt ? m.descPt : m.descEn}</Text>
-                {note && (
-                  <Text style={{ color: '#44ff66', fontSize: 11, marginTop: 2, fontWeight: '700' }}>{note}</Text>
-                )}
+                <Text style={[styles.desc, { color: c.subtext }]}>{pt ? m.descPt : m.descEn}</Text>
+                {note && <Text style={styles.note}>{note}</Text>}
               </View>
             </View>
 
             {result && (
-              <View style={{ backgroundColor: c.bg, borderRadius: 6, padding: 6, marginTop: 6, borderWidth: 1, borderColor: c.border }}>
-                <Text style={{ color: c.accent, fontWeight: '800', fontSize: 14 }}>
+              <View style={[styles.resultBox, { backgroundColor: c.bg, borderColor: c.border }]}>
+                <Text style={[styles.resultTotal, { color: c.accent }]}>
                   {result.total}{' '}
-                  <Text style={{ color: c.subtext, fontSize: 11, fontWeight: '400' }}>{result.detail}</Text>
+                  <Text style={[styles.resultDetail, { color: c.subtext }]}>{result.detail}</Text>
                 </Text>
               </View>
             )}
 
-            {m.rollBonus !== undefined && (
+            {/* Consume A/BA/R button (for action-costing maneuvers) */}
+            {costCfg && (
               <TouchableOpacity
-                style={{ marginTop: 6, borderRadius: 8, backgroundColor: c.accent, paddingVertical: 6, alignItems: 'center' }}
+                style={[
+                  styles.consumeBtn,
+                  { borderColor: costCfg.color + '88', backgroundColor: costCfg.color + '22' },
+                  !canConsume && styles.consumeBtnDisabled,
+                ]}
+                onPress={handleConsume}
+                disabled={!canConsume}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.consumeBadge, { backgroundColor: costCfg.color }]}>
+                  <Text style={styles.consumeBadgeText}>{costCfg.symbol}</Text>
+                </View>
+                <Text style={[styles.consumeLabel, { color: canConsume ? costCfg.color : '#555' }]}>
+                  {m.rollBonus !== undefined
+                    ? `${pt ? (m.rollLabelPt ?? '') : (m.rollLabelEn ?? '')}  ·  ${pt ? 'Usar' : 'Use'} ${costCfg.symbol}`
+                    : `${pt ? 'Usar' : 'Use'} ${costCfg.symbol}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Roll-only button (for part-of-attack/movement maneuvers) */}
+            {m.rollBonus !== undefined && m.actionCost === 'none' && (
+              <TouchableOpacity
+                style={[styles.rollBtn, { backgroundColor: c.accent }]}
                 onPress={() => roll(m.id, m.rollBonus!, m.rollAdv ?? 'normal')}
                 activeOpacity={0.7}
               >
-                <Text style={{ color: c.bg, fontWeight: '800', fontSize: 12 }}>
+                <Text style={[styles.rollBtnText, { color: c.bg }]}>
                   🎲 {pt ? m.rollLabelPt : m.rollLabelEn}
                 </Text>
               </TouchableOpacity>
@@ -234,4 +295,40 @@ export default function CombatManeuvers({ char, language, themeColors: c, active
       })}
     </View>
   );
+}
+
+function makeStyles(c: TC) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: c.surface, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border, padding: 10, marginBottom: 6,
+    },
+    cardDisabled: { opacity: 0.45 },
+    topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+    icon: { fontSize: 20 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' },
+    name: { fontWeight: '700', fontSize: 14 },
+    costBadge: { borderRadius: 4, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 1 },
+    costText: { fontSize: 10, fontWeight: '700' },
+    desc: { fontSize: 11 },
+    note: { color: '#44ff66', fontSize: 11, marginTop: 2, fontWeight: '700' },
+    resultBox: { borderRadius: 6, padding: 6, marginTop: 6, borderWidth: 1 },
+    resultTotal: { fontWeight: '800', fontSize: 14 },
+    resultDetail: { fontSize: 11, fontWeight: '400' },
+    consumeBtn: {
+      marginTop: 8, borderRadius: 8, borderWidth: 1,
+      paddingVertical: 7, paddingHorizontal: 10,
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+    },
+    consumeBtnDisabled: { opacity: 0.4 },
+    consumeBadge: {
+      borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2,
+    },
+    consumeBadgeText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
+    consumeLabel: { fontSize: 12, fontWeight: '700' },
+    rollBtn: {
+      marginTop: 6, borderRadius: 8, paddingVertical: 6, alignItems: 'center',
+    },
+    rollBtnText: { fontWeight: '800', fontSize: 12 },
+  });
 }

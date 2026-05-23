@@ -4274,6 +4274,20 @@ export function getFeaturesForLevel(classId: string, level: number): ClassFeatur
   return levelData?.features ?? [];
 }
 
+/** Returns IDs of all 'auto' features granted from level 1 up to (and including) `maxLevel`. */
+export function getAutoTraitIdsUpToLevel(classId: string, maxLevel: number): string[] {
+  const classFeatures = CLASS_FEATURES[classId];
+  if (!classFeatures) return [];
+  const ids: string[] = [];
+  for (const lf of classFeatures) {
+    if (lf.level > maxLevel) break;
+    for (const f of lf.features) {
+      if (f.type === 'auto') ids.push(f.id);
+    }
+  }
+  return ids;
+}
+
 /**
  * Returns a map of optionId -> optionName for every choice option in the given class.
  * Used to look up the display names of previously selected traits.

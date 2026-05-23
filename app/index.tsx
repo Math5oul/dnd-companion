@@ -91,7 +91,25 @@ export default function HomeScreen() {
         Alert.alert('Erro', t.importError);
         return;
       }
-      const { id: _id, createdAt: _c, updatedAt: _u, ...charData } = parsed;
+      const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = parsed;
+      // Ensure safe defaults for all fields (handles JSONs exported before new columns)
+      const charData = {
+        ...rest,
+        equipment:            rest.equipment            ?? [],
+        conditions:           rest.conditions           ?? [],
+        activeEffects:        rest.activeEffects        ?? [],
+        activeToggles:        rest.activeToggles        ?? [],
+        proficiencies:        rest.proficiencies        ?? [],
+        skillProficiencies:   rest.skillProficiencies   ?? [],
+        actionUses:           rest.actionUses           ?? {},
+        featureChoices:       rest.featureChoices       ?? {},
+        asiChoices:           rest.asiChoices           ?? {},
+        gold:                 rest.gold                 ?? 0,
+        hitDiceUsed:          rest.hitDiceUsed          ?? 0,
+        // Reset transient combat state on import
+        tempHp:               0,
+        concentrationSpellId: null,
+      };
       const imported = await importCharacter(charData);
       if (imported) {
         Alert.alert('✅', t.importSuccess(imported.name));

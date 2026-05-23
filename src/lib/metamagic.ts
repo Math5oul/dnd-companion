@@ -81,10 +81,32 @@ export function applyMetamagicToDamage(
   if (chosen.has('careful'))    notes.push('🛡️ Aliados passam na resist.');
   if (chosen.has('subtle'))     notes.push('🤫 Sem V/S');
   if (chosen.has('extended'))   notes.push('⏳ Duração dobrada');
-  if (chosen.has('distant'))    notes.push('📏 Alcance dobrado');
   if (chosen.has('transmuted')) notes.push('🔄 Tipo de dano alterado');
+  // 'distant' é tratado via computeSpellRange — não gera nota de dano aqui
 
   return { dmg, notes };
+}
+
+/**
+ * Computa o alcance efetivo de uma magia com as metamagias selecionadas.
+ *
+ * Regras de Magia Distante (Distant Spell):
+ * - 'Touch' → '30 ft' (mínimo de 30 pés)
+ * - 'Self' → não alterado
+ * - 'X ft' ou 'X m' → '2X ft' / '2X m'
+ * - Outros formatos (ex: 'Special') → retornado sem alteração
+ */
+export function computeSpellRange(baseRange: string, chosen: Set<string>): string {
+  if (!chosen.has('distant')) return baseRange;
+  const norm = baseRange.trim();
+  if (norm === 'Touch' || norm === 'Toque') return '30 ft';
+  if (norm === 'Self' || norm === 'Pessoal') return norm;
+  const match = norm.match(/^(\d+)\s*(ft|m|feet|metros?)/i);
+  if (match) {
+    const doubled = Number(match[1]) * 2;
+    return `${doubled} ${match[2]}`;
+  }
+  return baseRange;
 }
 
 /** Calcula o custo total em SP das metamagias selecionadas */

@@ -2,6 +2,17 @@ import type { Equipment, EquipmentBonus } from './equipment';
 
 export type AbilityName = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
 
+export type ProficiencyCategory = 'skill' | 'weapon' | 'armor' | 'tool' | 'saving_throw';
+export type ProficiencyLevel = 'proficient' | 'expert';
+
+/** Proficiência tipada — cobre perícias, armas, armaduras, ferramentas e saves */
+export interface Proficiency {
+  category: ProficiencyCategory;
+  /** ID canônico: ex 'stealth', 'longsword', 'light_armor', 'thieves_tools', 'strength' */
+  id: string;
+  level: ProficiencyLevel;
+}
+
 export interface AbilityScores {
   strength: number;
   dexterity: number;
@@ -42,12 +53,24 @@ export interface Character {
   kiPoints?: { total: number; used: number };
   /** Dados de Vida usados (Short Rest). Reseta no Long Rest. */
   hitDiceUsed?: number;
-  /** IDs das perícias em que o personagem tem proficiência */
+  /** Pontos de Vida Temporários (não stackam — usa o maior valor) */
+  tempHp?: number;
+  /** Velocidade base em pés — inicializada da raça na criação do personagem */
+  speed?: number;
+  /** IDs das perícias em que o personagem tem proficiência (legado — mantido por compatibilidade) */
   skillProficiencies?: string[];
+  /** Proficiências tipadas — substitui gradualmente skillProficiencies */
+  proficiencies?: Proficiency[];
+  /** IDs de ações toggle atualmente ativas (ex: 'rage', 'ki_step') */
+  activeToggles?: string[];
   /** Lista de equipamentos do personagem */
   equipment?: Equipment[];
   /** Efeitos temporários ativos (de poções, etc) */
   activeEffects?: ActiveEffect[];
+  /** ID da magia atualmente em concentração (null = sem concentração) */
+  concentrationSpellId?: string | null;
+  /** Condições de status ativas (ex: 'poisoned', 'prone') */
+  conditions?: string[];
   /** Moedas de ouro do personagem */
   gold?: number;
   /** Bônus de ASI escolhidos manualmente por feature */
@@ -73,6 +96,8 @@ export interface CharacterDraft {
   className: string;
   level: number;
   abilityScores: AbilityScores;
+  /** Itens iniciais editáveis na tela de revisão */
+  equipment?: import('./equipment').Equipment[];
 }
 
 export type WizardStep = 'name' | 'race' | 'class' | 'abilities' | 'review';

@@ -1,8 +1,10 @@
 import { create } from 'zustand';
-import { Character, CharacterDraft, AbilityName, AbilityScores } from '../types/character';
+import { Character, CharacterDraft, AbilityName, AbilityScores, Proficiency } from '../types/character';
 import { Equipment } from '../types/equipment';
 import { supabase } from '../lib/supabase';
 import { getClassById } from '../data/classes';
+import { getRaceById } from '../data/races';
+import { getAutoTraitIdsUpToLevel } from '../data/classFeatures';
 import { calculateStartingHp, rollDamage } from '../lib/dice';
 
 const EMPTY_DRAFT: CharacterDraft = {
@@ -32,6 +34,7 @@ interface CharacterStore {
   setDraftRace: (race: string) => void;
   setDraftClass: (className: string) => void;
   setDraftLevel: (level: number) => void;
+  setDraftEquipment: (equipment: import('../types/equipment').Equipment[]) => void;
   setRolledValues: (values: number[]) => void;
   assignValue: (ability: AbilityName, value: number) => void;
   unassignValue: (ability: AbilityName) => void;
@@ -78,6 +81,8 @@ interface CharacterStore {
   activateConsumable: (characterId: string, itemId: string) => Promise<void>;
   /** Atualiza as moedas de ouro do personagem (delta positivo ou negativo) */
   updateGold: (characterId: string, delta: number) => Promise<void>;
+  /** Define os Pontos de Vida Temporários (usa o maior entre atual e novo) */
+  updateTempHp: (characterId: string, value: number) => Promise<void>;
   /** Salva a escolha de ASI para uma feature (ex: { strength: 2 }) */
   updateAsiChoice: (characterId: string, featureId: string, bonuses: Partial<Record<string, number>>) => Promise<void>;
   /** Usa uma ação de feature (decrementa usos) */
@@ -90,6 +95,22 @@ interface CharacterStore {
    * Remove itens com duration === 'long_rest' do inventário (chamado no Long Rest).
    */
   clearLongRestItems: (characterId: string) => Promise<void>;
+  /**
+   * Ativa ou desativa um toggle de feature (ex: Rage, Step of the Wind).
+   * Adiciona/remove o actionId de char.activeToggles.
+   */
+  toggleFeature: (characterId: string, actionId: string) => Promise<void>;
+  /** Define a magia sendo concentrada (null para cancelar concentração) */
+  setConcentration: (characterId: string, spellId: string | null) => Promise<void>;
+  /** Adiciona uma condição de status ao personagem */
+  addCondition: (characterId: string, conditionId: string) => Promise<void>;
+  /** Remove uma condição de status do personagem */
+  removeCondition: (characterId: string, conditionId: string) => Promise<void>;
+  /**
+   * Adiciona uma proficiência tipada ao personagem.
+   * Não adiciona duplicatas (mesma category + id).
+   */
+  addProficiency: (characterId: string, proficiency: Proficiency) => Promise<void>;
 
   // CRUD
   fetchCharacters: () => Promise<void>;
@@ -110,6 +131,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   setDraftRace: (race) => set((s) => ({ draft: { ...s.draft, race } })),
   setDraftClass: (className) => set((s) => ({ draft: { ...s.draft, className } })),
   setDraftLevel: (level) => set((s) => ({ draft: { ...s.draft, level } })),
+  setDraftEquipment: (equipment) => set((s) => ({ draft: { ...s.draft, equipment } })),
 
   setRolledValues: (values) => set({ rolledValues: values, assignedValues: {} }),
 
@@ -148,7 +170,20 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       .select('*')
       .order('createdAt', { ascending: false });
     if (!error && data) {
-      set({ characters: data as Character[] });
+      // Backfill traits for characters that were created before auto-population
+      const migrated = await Promise.all(
+        (data as Character[]).map(async (char) => {
+          if (char.traits && char.traits.length > 0) return char;
+          const autoTraits = getAutoTraitIdsUpToLevel(char.className, char.level);
+          if (autoTraits.length === 0) return char;
+          await supabase
+            .from('characters')
+            .update({ traits: autoTraits })
+            .eq('id', char.id);
+          return { ...char, traits: autoTraits };
+        })
+      );
+      set({ characters: migrated });
     }
     set({ loading: false });
   },
@@ -156,6 +191,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   saveCharacter: async () => {
     const { draft } = get();
     const cls = getClassById(draft.className);
+    const race = getRaceById(draft.race);
     const maxHp = cls ? calculateStartingHp(cls.hitDie, draft.abilityScores.constitution) : 8;
 
     // Build spell slots from class data
@@ -176,6 +212,9 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       hp: maxHp,
       maxHp,
       spellSlots,
+      speed: race?.speed ?? 30,
+      traits: getAutoTraitIdsUpToLevel(draft.className, draft.level),
+      equipment: draft.equipment ?? [],
       // Pontos de Feitiçaria: sorcerer nível ≥ 2 começa com pontos = nível
       ...(draft.className === 'sorcerer' && draft.level >= 2
         ? { sorceryPoints: { total: draft.level, used: 0 } }
@@ -593,12 +632,17 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const item = (char.equipment ?? []).find((e) => e.id === itemId);
     if (!item) return { hpGained: 0, detail: '' };
 
-    // Roll healing BEFORE mutating state
+    // Roll effects BEFORE mutating state
     let hpGained = 0;
     let detail = '';
+    let tempHpGained = 0;
     if (item.useEffect?.type === 'heal') {
       const result = rollDamage(item.useEffect.dice);
       hpGained = result.total;
+      detail = result.detail;
+    } else if (item.useEffect?.type === 'temp_hp') {
+      const result = rollDamage(item.useEffect.dice);
+      tempHpGained = result.total;
       detail = result.detail;
     }
 
@@ -620,19 +664,25 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     if (hpGained > 0) {
       newHp = Math.min(char.maxHp, char.hp + hpGained);
     }
+    // Apply temp HP if temp_hp effect (take the higher value per RAW)
+    let newTempHp = char.tempHp ?? 0;
+    if (tempHpGained > 0) {
+      newTempHp = Math.max(newTempHp, tempHpGained);
+    }
 
-    await supabase
-      .from('characters')
-      .update({ equipment: updatedEquipment, hp: newHp })
-      .eq('id', characterId);
+    const patch: Record<string, unknown> = { equipment: updatedEquipment, hp: newHp };
+    if (tempHpGained > 0) patch.tempHp = newTempHp;
+
+    await supabase.from('characters').update(patch).eq('id', characterId);
 
     set((s) => ({
       characters: s.characters.map((c) =>
-        c.id === characterId ? { ...c, equipment: updatedEquipment, hp: newHp } : c
+        c.id === characterId ? { ...c, equipment: updatedEquipment, hp: newHp,
+          ...(tempHpGained > 0 ? { tempHp: newTempHp } : {}) } : c
       ),
     }));
 
-    return { hpGained, detail };
+    return { hpGained: hpGained || tempHpGained, detail };
   },
 
   clearLongRestItems: async (characterId) => {
@@ -650,7 +700,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId
-          ? { ...c, equipment: updatedEquipment, activeEffects: updatedEffects }
+          ? { ...c, equipment: updatedEquipment, activeEffects: updatedEffects, tempHp: 0, concentrationSpellId: null }
           : c
       ),
     }));
@@ -662,7 +712,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     if (e1) console.warn('[clearLongRestItems] equipment error:', e1.message);
     const { error: e2 } = await supabase
       .from('characters')
-      .update({ activeEffects: updatedEffects })
+      .update({ activeEffects: updatedEffects, tempHp: 0, concentrationSpellId: null })
       .eq('id', characterId);
     if (e2) console.warn('[clearLongRestItems] activeEffects error (run migration):', e2.message);
   },
@@ -721,6 +771,19 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, gold: newGold } : c
+      ),
+    }));
+  },
+
+  updateTempHp: async (characterId, value) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    // Per RAW: take the higher value; setting to 0 always clears
+    const newTempHp = value === 0 ? 0 : Math.max(char.tempHp ?? 0, value);
+    await supabase.from('characters').update({ tempHp: newTempHp }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, tempHp: newTempHp } : c
       ),
     }));
   },
@@ -828,5 +891,86 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       featureChoices: updatedChoices,
     }).eq('id', characterId);
     if (e2) console.warn('[saveFeatureChoice] featureChoices error (run supabase/schema.sql migration):', e2.message);
+  },
+
+  toggleFeature: async (characterId, actionId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.activeToggles ?? [];
+    const updated = current.includes(actionId)
+      ? current.filter((t) => t !== actionId)
+      : [...current, actionId];
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, activeToggles: updated } : c
+      ),
+    }));
+    const { error } = await supabase.from('characters').update({ activeToggles: updated }).eq('id', characterId);
+    if (error) console.warn('[toggleFeature] Supabase error (run migration):', error.message);
+  },
+
+  setConcentration: async (characterId, spellId) => {
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, concentrationSpellId: spellId } : c
+      ),
+    }));
+    const { error } = await supabase
+      .from('characters')
+      .update({ concentrationSpellId: spellId })
+      .eq('id', characterId);
+    if (error) console.warn('[setConcentration] Supabase error (run migration):', error.message);
+  },
+
+  addCondition: async (characterId, conditionId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.conditions ?? [];
+    if (current.includes(conditionId)) return;
+    const updated = [...current, conditionId];
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, conditions: updated } : c
+      ),
+    }));
+    const { error } = await supabase
+      .from('characters')
+      .update({ conditions: updated })
+      .eq('id', characterId);
+    if (error) console.warn('[addCondition] Supabase error (run migration):', error.message);
+  },
+
+  removeCondition: async (characterId, conditionId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const updated = (char.conditions ?? []).filter((c) => c !== conditionId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, conditions: updated } : c
+      ),
+    }));
+    const { error } = await supabase
+      .from('characters')
+      .update({ conditions: updated })
+      .eq('id', characterId);
+    if (error) console.warn('[removeCondition] Supabase error (run migration):', error.message);
+  },
+
+  addProficiency: async (characterId, proficiency) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const current = char.proficiencies ?? [];
+    const alreadyExists = current.some(
+      (p) => p.category === proficiency.category && p.id === proficiency.id,
+    );
+    if (alreadyExists) return;
+    const updated = [...current, proficiency];
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, proficiencies: updated } : c
+      ),
+    }));
+    const { error } = await supabase.from('characters').update({ proficiencies: updated }).eq('id', characterId);
+    if (error) console.warn('[addProficiency] Supabase error (run migration):', error.message);
   },
 }));

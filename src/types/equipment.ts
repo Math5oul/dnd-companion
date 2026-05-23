@@ -2,7 +2,7 @@ import type { AbilityName } from './character';
 
 export type EquipmentType = 'weapon' | 'armor' | 'shield' | 'accessory' | 'consumable' | 'other';
 
-export type BonusType = AbilityName | 'ac' | 'initiative';
+export type BonusType = AbilityName | 'ac' | 'initiative' | 'speed' | 'extra_action' | 'extra_bonus_action';
 
 export interface EquipmentBonus {
   type: BonusType;
@@ -34,7 +34,15 @@ export interface Equipment {
   /** True once the consumable has been "drunk" — attacks become available */
   activated?: boolean;
   /** Auto-effect when a charge is used (consumables) */
-  useEffect?: { type: 'heal' | 'temp_hp'; dice: string };
+  useEffect?: { type: 'heal' | 'temp_hp' | 'damage'; dice: string; damageType?: string };
+  /** Armor category — defines DEX contribution to AC */
+  armorCategory?: 'light' | 'medium' | 'heavy';
+  /** Base AC for armors (replaces the additive ac bonus for base armors) */
+  baseAC?: number;
+  /** Weapon proficiency category */
+  weaponCategory?: 'simple' | 'martial';
+  /** Number of hands required */
+  weaponHands?: 'one' | 'two';
   /** Weight in lbs (D&D base unit). UI converts to kg when metric. */
   weight?: number;
   bonuses: EquipmentBonus[];  // stat bonuses when equipped
@@ -70,16 +78,20 @@ export const EQUIPMENT_TYPE_LABELS_EN: Record<EquipmentType, string> = {
 };
 
 export const BONUS_TYPE_LABELS: Record<BonusType, { pt: string; en: string }> = {
-  strength:     { pt: 'FOR', en: 'STR' },
-  dexterity:    { pt: 'DES', en: 'DEX' },
-  constitution: { pt: 'CON', en: 'CON' },
-  intelligence: { pt: 'INT', en: 'INT' },
-  wisdom:       { pt: 'SAB', en: 'WIS' },
-  charisma:     { pt: 'CAR', en: 'CHA' },
-  ac:           { pt: 'CA',  en: 'AC'  },
-  initiative:   { pt: 'INIC',en: 'INIT'},
+  strength:           { pt: 'FOR',   en: 'STR'    },
+  dexterity:          { pt: 'DES',   en: 'DEX'    },
+  constitution:       { pt: 'CON',   en: 'CON'    },
+  intelligence:       { pt: 'INT',   en: 'INT'    },
+  wisdom:             { pt: 'SAB',   en: 'WIS'    },
+  charisma:           { pt: 'CAR',   en: 'CHA'    },
+  ac:                 { pt: 'CA',    en: 'AC'     },
+  initiative:         { pt: 'INIC',  en: 'INIT'   },
+  speed:              { pt: 'VEL',   en: 'SPD'    },
+  extra_action:       { pt: 'Ação+', en: 'Action+'},
+  extra_bonus_action: { pt: 'Bônus+',en: 'Bonus+' },
 };
 
 export const ALL_BONUS_TYPES: BonusType[] = [
-  'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma', 'ac', 'initiative',
+  'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
+  'ac', 'initiative', 'speed', 'extra_action', 'extra_bonus_action',
 ];

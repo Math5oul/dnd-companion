@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
@@ -6,9 +6,12 @@ import { formatModifier } from '../../src/lib/dice';
 import { getRaceById } from '../../src/data/races';
 import { getClassById } from '../../src/data/classes';
 import { AbilityName } from '../../src/types/character';
+import type { Equipment } from '../../src/types/equipment';
+import { EQUIPMENT_TYPE_ICONS } from '../../src/types/equipment';
 import { useSettingsStore, THEMES } from '../../src/store/settingsStore';
 import { useI18n, translateRaceName, translateClassName } from '../../src/lib/i18n';
 import { convertSpeed } from '../../src/lib/units';
+import { getStartingEquipment } from '../../src/data/startingEquipment';
 
 const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
   { key: 'strength', icon: '💪' },
@@ -21,7 +24,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 
 export default function Step5Review() {
   const router = useRouter();
-  const { draft, saveCharacter } = useCharacterStore();
+  const { draft, saveCharacter, setDraftEquipment } = useCharacterStore();
   const [saving, setSaving] = useState(false);
   const { theme } = useSettingsStore();
   const c = THEMES[theme];
@@ -36,6 +39,19 @@ export default function Step5Review() {
 
   const race = getRaceById(draft.race);
   const cls = getClassById(draft.className);
+
+  // Populate starting equipment once when arriving on this screen
+  useEffect(() => {
+    if (!draft.equipment) {
+      setDraftEquipment(getStartingEquipment(draft.className, draft.race));
+    }
+  }, []);
+
+  const items: Equipment[] = draft.equipment ?? getStartingEquipment(draft.className, draft.race);
+
+  const removeItem = (id: string) => {
+    setDraftEquipment(items.filter((i) => i.id !== id));
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -99,6 +115,49 @@ export default function Step5Review() {
         </>
       )}
 
+      {/* ── Equipamento inicial ── */}
+      <Text style={styles.sectionTitle}>
+        {language === 'en' ? '🎒 Starting Equipment' : '🎒 Equipamento Inicial'}
+      </Text>
+      <View style={styles.infoCard}>
+        <Text style={styles.equipHint}>
+          {language === 'en'
+            ? 'These items will be added to your inventory. Tap × to remove any you don\'t want.'
+            : 'Esses itens serão adicionados ao inventário. Toque em × para remover itens indesejados.'}
+        </Text>
+        {items.length === 0 ? (
+          <Text style={[styles.equipHint, { marginTop: 8 }]}>
+            {language === 'en' ? 'No starting items.' : 'Nenhum item inicial.'}
+          </Text>
+        ) : (
+          items.map((item) => (
+            <View key={item.id} style={styles.equipRow}>
+              <Text style={styles.equipIcon}>{EQUIPMENT_TYPE_ICONS[item.type]}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.equipName}>{item.name}</Text>
+                {item.description ? (
+                  <Text style={styles.equipDesc} numberOfLines={1}>{item.description}</Text>
+                ) : null}
+              </View>
+              {item.equipped && (
+                <View style={styles.equippedBadge}>
+                  <Text style={styles.equippedBadgeText}>
+                    {language === 'en' ? 'equipped' : 'equipado'}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.removeBtn}
+                onPress={() => removeItem(item.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.removeBtnText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </View>
+
       <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={saving}>
         {saving ? (
           <ActivityIndicator color={c.bg} />
@@ -153,6 +212,35 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   },
   infoText: { color: c.subtext, fontSize: 13, lineHeight: 20 },
   infoTextMagic: { color: '#c090ff', fontSize: 13 },
+  // Equipment list
+  equipHint: { color: c.subtext, fontSize: 12, lineHeight: 18, marginBottom: 4 },
+  equipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: c.border,
+  },
+  equipIcon: { fontSize: 18, width: 24, textAlign: 'center' },
+  equipName: { color: c.text, fontSize: 13, fontWeight: '600' },
+  equipDesc: { color: c.subtext, fontSize: 11, marginTop: 1 },
+  equippedBadge: {
+    borderRadius: 4,
+    backgroundColor: c.accent + '22',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  equippedBadgeText: { color: c.accent, fontSize: 10, fontWeight: '700' },
+  removeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#ff444422',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeBtnText: { color: '#ff6666', fontSize: 18, lineHeight: 22, fontWeight: 'bold' },
   btn: {
     backgroundColor: c.accent,
     borderRadius: 10,
@@ -163,12 +251,4 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   btnText: { color: c.bg, fontWeight: 'bold', fontSize: 17 },
 });
 
-const ABILITIES: { key: AbilityName; label: string; icon: string }[] = [
-  { key: 'strength', label: 'Força', icon: '💪' },
-  { key: 'dexterity', label: 'Destreza', icon: '🏹' },
-  { key: 'constitution', label: 'Constituição', icon: '🛡️' },
-  { key: 'intelligence', label: 'Inteligência', icon: '📚' },
-  { key: 'wisdom', label: 'Sabedoria', icon: '🔮' },
-  { key: 'charisma', label: 'Carisma', icon: '✨' },
-];
 
