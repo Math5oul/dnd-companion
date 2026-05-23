@@ -170,17 +170,20 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       .select('*')
       .order('createdAt', { ascending: false });
     if (!error && data) {
-      // Backfill traits for characters that were created before auto-population
+      // Backfill / merge auto-traits so newly-added class features are reflected
       const migrated = await Promise.all(
         (data as Character[]).map(async (char) => {
-          if (char.traits && char.traits.length > 0) return char;
           const autoTraits = getAutoTraitIdsUpToLevel(char.className, char.level);
           if (autoTraits.length === 0) return char;
+          const existing = new Set(char.traits ?? []);
+          const missing = autoTraits.filter((t) => !existing.has(t));
+          if (missing.length === 0) return char;
+          const merged = [...(char.traits ?? []), ...missing];
           await supabase
             .from('characters')
-            .update({ traits: autoTraits })
+            .update({ traits: merged })
             .eq('id', char.id);
-          return { ...char, traits: autoTraits };
+          return { ...char, traits: merged };
         })
       );
       set({ characters: migrated });

@@ -208,6 +208,182 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
   rogue_sneak_attack_4d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (4d6)', nameEn: 'Sneak Attack (4d6)', descPt: '+4d6 de dano furtivo.', descEn: '+4d6 sneak damage.', useType: 'at_will', damageDice: '4d6' }] },
   rogue_sneak_attack_4d6_l8: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (4d6)', nameEn: 'Sneak Attack (4d6)', descPt: '+4d6 de dano furtivo.', descEn: '+4d6 sneak damage.', useType: 'at_will', damageDice: '4d6' }] },
   rogue_sneak_attack_5d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (5d6)', nameEn: 'Sneak Attack (5d6)', descPt: '+5d6 de dano furtivo.', descEn: '+5d6 sneak damage.', useType: 'at_will', damageDice: '5d6' }] },
+  rogue_sneak_attack_5d6_l10: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (5d6)', nameEn: 'Sneak Attack (5d6)', descPt: '+5d6 de dano furtivo.', descEn: '+5d6 sneak damage.', useType: 'at_will', damageDice: '5d6' }] },
+  rogue_sneak_attack_6d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (6d6)', nameEn: 'Sneak Attack (6d6)', descPt: '+6d6 de dano furtivo.', descEn: '+6d6 sneak damage.', useType: 'at_will', damageDice: '6d6' }] },
+  rogue_sneak_attack_6d6_l12: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (6d6)', nameEn: 'Sneak Attack (6d6)', descPt: '+6d6 de dano furtivo.', descEn: '+6d6 sneak damage.', useType: 'at_will', damageDice: '6d6' }] },
+  rogue_sneak_attack_7d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (7d6)', nameEn: 'Sneak Attack (7d6)', descPt: '+7d6 de dano furtivo.', descEn: '+7d6 sneak damage.', useType: 'at_will', damageDice: '7d6' }] },
+  rogue_sneak_attack_7d6_l14: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (7d6)', nameEn: 'Sneak Attack (7d6)', descPt: '+7d6 de dano furtivo.', descEn: '+7d6 sneak damage.', useType: 'at_will', damageDice: '7d6' }] },
+  rogue_sneak_attack_8d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (8d6)', nameEn: 'Sneak Attack (8d6)', descPt: '+8d6 de dano furtivo.', descEn: '+8d6 sneak damage.', useType: 'at_will', damageDice: '8d6' }] },
+  rogue_sneak_attack_8d6_l16: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (8d6)', nameEn: 'Sneak Attack (8d6)', descPt: '+8d6 de dano furtivo.', descEn: '+8d6 sneak damage.', useType: 'at_will', damageDice: '8d6' }] },
+  rogue_sneak_attack_9d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (9d6)', nameEn: 'Sneak Attack (9d6)', descPt: '+9d6 de dano furtivo.', descEn: '+9d6 sneak damage.', useType: 'at_will', damageDice: '9d6' }] },
+  rogue_sneak_attack_9d6_l18: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (9d6)', nameEn: 'Sneak Attack (9d6)', descPt: '+9d6 de dano furtivo.', descEn: '+9d6 sneak damage.', useType: 'at_will', damageDice: '9d6' }] },
+  rogue_sneak_attack_10d6: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (10d6)', nameEn: 'Sneak Attack (10d6)', descPt: '+10d6 de dano furtivo.', descEn: '+10d6 sneak damage.', useType: 'at_will', damageDice: '10d6' }] },
+  rogue_sneak_attack_10d6_l20: { actions: [{ id: 'sneak_attack', namePt: 'Ataque Furtivo (10d6)', nameEn: 'Sneak Attack (10d6)', descPt: '+10d6 de dano furtivo.', descEn: '+10d6 sneak damage.', useType: 'at_will', damageDice: '10d6' }] },
+
+  // Ação Ardilosa — 3 opções de ação bônus exclusivas do Ladino (nível 2)
+  rogue_cunning_action: {
+    actions: [
+      {
+        id: 'cunning_action_hide',
+        namePt: 'Ação Ardilosa: Esconder',
+        nameEn: 'Cunning Action: Hide',
+        descPt: 'Esconde-se como ação bônus. Configura o próximo Ataque Furtivo sem precisar de aliado adjacente.',
+        descEn: 'Hide as a bonus action. Sets up your next Sneak Attack without needing an adjacent ally.',
+        useType: 'at_will',
+        activationCost: 'bonus',
+      },
+      {
+        id: 'cunning_action_disengage',
+        namePt: 'Ação Ardilosa: Desengajar',
+        nameEn: 'Cunning Action: Disengage',
+        descPt: 'Desengaja como ação bônus. Seu movimento não provoca ataques de oportunidade até o fim do turno.',
+        descEn: 'Disengage as a bonus action. Your movement does not provoke opportunity attacks until end of turn.',
+        useType: 'at_will',
+        activationCost: 'bonus',
+      },
+      {
+        id: 'cunning_action_dash',
+        namePt: 'Ação Ardilosa: Avançar',
+        nameEn: 'Cunning Action: Dash',
+        descPt: 'Avança como ação bônus, dobrando o deslocamento total no turno.',
+        descEn: 'Dash as a bonus action, doubling total movement for the turn.',
+        useType: 'at_will',
+        activationCost: 'bonus',
+      },
+    ],
+  },
+
+  // Esquiva Instintiva (nível 5) — reação para reduzir dano à metade
+  rogue_uncanny_dodge: {
+    actions: [{
+      id: 'uncanny_dodge',
+      namePt: 'Esquiva Instintiva',
+      nameEn: 'Uncanny Dodge',
+      descPt: 'Reação: ao ser acertado por um atacante que você possa ver, reduza o dano sofrido à metade.',
+      descEn: 'Reaction: when hit by an attacker you can see, halve the damage taken.',
+      useType: 'at_will',
+      activationCost: 'reaction',
+    }],
+  },
+
+  // Evasão (nível 7) — passiva (sem ação, informativa)
+  rogue_evasion: {
+    actions: [{
+      id: 'evasion_rogue',
+      namePt: 'Evasão (passiva)',
+      nameEn: 'Evasion (passive)',
+      descPt: 'Em resistências de DEX para metade do dano: sem dano se passar, metade se falhar.',
+      descEn: 'On DEX saves for half damage: no damage on pass, half on fail.',
+      useType: 'at_will',
+      activationCost: 'free',
+    }],
+  },
+
+  // ── Arquétipos de Ladino ─────────────────────────────────────────────────
+  rogue_arch_assassin: {
+    actions: [{
+      id: 'assassinate',
+      namePt: 'Assassinar (passiva)',
+      nameEn: 'Assassinate (passive)',
+      descPt: 'Vantagem em ataques contra criaturas que ainda não tomaram turno no combate. Crítico automático contra alvos surpreendidos.',
+      descEn: 'Advantage on attacks against creatures that have not taken a turn. Auto-crit on surprised targets.',
+      useType: 'at_will',
+      activationCost: 'free',
+    }],
+  },
+  rogue_arch_thief: {
+    actions: [{
+      id: 'fast_hands',
+      namePt: 'Mãos Rápidas',
+      nameEn: 'Fast Hands',
+      descPt: 'Ação bônus: use ferramentas de ladrão, ative/manipule um objeto, Prestidigitação ou tente furtar.',
+      descEn: 'Bonus action: use thieves\' tools, activate/manipulate an object, Sleight of Hand, or pickpocket.',
+      useType: 'at_will',
+      activationCost: 'bonus',
+    }],
+  },
+  rogue_arch_swashbuckler: {
+    actions: [{
+      id: 'fancy_footwork',
+      namePt: 'Passos Elegantes (passiva)',
+      nameEn: 'Fancy Footwork (passive)',
+      descPt: 'Ao atacar uma criatura em combate corpo-a-corpo, ela não pode usar ataque de oportunidade contra você neste turno.',
+      descEn: 'When you make a melee attack against a creature, it cannot make opportunity attacks against you this turn.',
+      useType: 'at_will',
+      activationCost: 'free',
+    }],
+  },
+  rogue_arch_mastermind: {
+    actions: [{
+      id: 'master_of_tactics',
+      namePt: 'Mestre das Táticas',
+      nameEn: 'Master of Tactics',
+      descPt: 'Ação bônus: use a ação Ajuda para auxiliar aliados em ataques a até 9 metros (em vez dos 1,5m normais).',
+      descEn: 'Bonus action: use the Help action to aid ally attacks within 9m (instead of normal 5ft).',
+      useType: 'at_will',
+      activationCost: 'bonus',
+    }],
+  },
+  rogue_arch_inquisitive: {
+    actions: [{
+      id: 'insightful_fighting',
+      namePt: 'Combate Perspicaz',
+      nameEn: 'Insightful Fighting',
+      descPt: 'Ação bônus: teste de Intuição contra Enganação do alvo. Se passar, pode usar Ataque Furtivo contra ele por 1 minuto (sem precisar de vantagem ou aliado).',
+      descEn: 'Bonus action: Insight vs. target\'s Deception. On success, can Sneak Attack that target for 1 min without advantage or ally.',
+      useType: 'at_will',
+      activationCost: 'bonus',
+    }],
+  },
+  rogue_arch_scout: {
+    actions: [{
+      id: 'skirmisher',
+      namePt: 'Guerrilheiro',
+      nameEn: 'Skirmisher',
+      descPt: 'Reação: quando um inimigo termina o movimento adjacente a você, mova metade do deslocamento sem provocar ataques de oportunidade.',
+      descEn: 'Reaction: when an enemy ends its move adjacent to you, move up to half speed without provoking opportunity attacks.',
+      useType: 'at_will',
+      activationCost: 'reaction',
+    }],
+  },
+  rogue_arch_phantom: {
+    actions: [{
+      id: 'wails_from_grave',
+      namePt: 'Lamentos do Além',
+      nameEn: 'Wails from the Grave',
+      descPt: 'Após acertar um Ataque Furtivo, cause dano necrótico = metade dos dados de Ataque Furtivo a outra criatura em 9m. Usos = bônus de proficiência por descanso longo.',
+      descEn: 'After a Sneak Attack, deal necrotic damage equal to half your Sneak Attack dice to another creature within 9m. Uses = prof. bonus per long rest.',
+      useType: 'long_rest',
+      maxUses: 4,
+      damageType: 'necrotic',
+      activationCost: 'free',
+    }],
+  },
+  rogue_arch_soulknife: {
+    actions: [{
+      id: 'psychic_blades',
+      namePt: 'Lâminas Psíquicas',
+      nameEn: 'Psychic Blades',
+      descPt: 'Materializa uma lâmina psíquica. Ataque corpo-a-corpo ou à distância (9m) com DEX/STR, dano 1d6 psíquico. Ação bônus: segunda lâmina com 1d4 psíquico.',
+      descEn: 'Materialize a psychic blade. Melee or ranged attack (30ft) with DEX/STR, deals 1d6 psychic. Bonus action: second blade for 1d4 psychic.',
+      useType: 'at_will',
+      damageDice: '1d6',
+      damageType: 'psychic',
+      range: '9m',
+      activationCost: 'action',
+    }],
+  },
+  rogue_l9_swashbuckler: {
+    actions: [{
+      id: 'elegant_maneuver',
+      namePt: 'Manobra Elegante',
+      nameEn: 'Elegant Maneuver',
+      descPt: 'Ação bônus: ganhe vantagem no próximo teste de Acrobacia ou Atletismo neste turno.',
+      descEn: 'Bonus action: gain advantage on your next Acrobatics or Athletics check this turn.',
+      useType: 'at_will',
+      activationCost: 'bonus',
+    }],
+  },
 
   // ──────────────────────────────────────────────────────────────────────────
   // BÁRBARO — Movimento Rápido (nível 7)
