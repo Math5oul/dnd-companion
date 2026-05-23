@@ -452,9 +452,18 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     descEn: '3 charges. Bonus action: exhale fire in a 30-ft cone, 4d6 fire damage (DEX DC 13, half on save).',
     descPt: '3 cargas. Ação bônus: sopro de fogo em cone de 9m, 4d6 dano de fogo (DES TR 13, metade no sucesso).',
     bonuses: [],
-    traitsEn: [],
-    traitsPt: [],
-    attacks: [],
+    traitsEn: ['After drinking, gain Fire Breath attack (bonus action, 3 charges, expires on long rest)'],
+    traitsPt: ['Após beber, ganha ataque Sopro de Fogo (ação bônus, 3 cargas, expira no descanso longo)'],
+    attacks: [
+      {
+        id: 'fire_breath',
+        name: 'Sopro de Fogo',
+        attackBonus: 0, // CD 13 DEX, não rola ataque
+        damage: '4d6',
+        damageType: 'fire',
+        range: '9m cone',
+      },
+    ],
   },
   {
     nameEn: 'Antitoxin', namePt: 'Antitoxina', type: 'consumable', goldValue: 50, weight: 0,
