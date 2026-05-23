@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -52,7 +53,7 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, useKiPoint, recoverKiPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateTempHp, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice, toggleFeature, setConcentration, addCondition, removeCondition } = useCharacterStore();
+  const { characters, loading, fetchCharacters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, useKiPoint, recoverKiPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateTempHp, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice, toggleFeature, setConcentration, addCondition, removeCondition } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
@@ -63,6 +64,11 @@ export default function CharacterSheet() {
   const ABILITIES = useMemo(() => ABILITY_KEYS.map(({ key, icon }) => ({
     key, icon, label: t[key as keyof typeof t] as string,
   })), [language]);
+
+  // On hard refresh, characters array is empty — fetch from Supabase
+  useEffect(() => {
+    if (characters.length === 0) fetchCharacters();
+  }, []);
 
   const char = characters.find((c) => c.id === id);
 
@@ -215,11 +221,19 @@ export default function CharacterSheet() {
     [char],
   );
 
+  if (loading || (!char && characters.length === 0)) {
+    return (
+      <View style={styles.notFound}>
+        <ActivityIndicator size="large" color={themeColors.accent} />
+      </View>
+    );
+  }
+
   if (!char) {
     return (
       <View style={styles.notFound}>
         <Text style={styles.notFoundText}>Personagem não encontrado.</Text>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.replace('/')}>
           <Text style={styles.backLink}>{t.back}</Text>
         </TouchableOpacity>
       </View>

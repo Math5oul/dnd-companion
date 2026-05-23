@@ -12,6 +12,7 @@ import { useTabStore } from '../store/tabStore';
 import { useSettingsStore, THEMES } from '../store/settingsStore';
 import { useI18n } from '../lib/i18n';
 import SettingsModal from './SettingsModal';
+import DiceRollerModal from './DiceRollerModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabBar() {
@@ -23,6 +24,7 @@ export default function TabBar() {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diceOpen, setDiceOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const activeId = pathname === '/' ? 'home' : pathname.split('/character/')[1] ?? 'home';
@@ -69,7 +71,7 @@ export default function TabBar() {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, { color: activeId === 'home' ? colors.accent : colors.subtext }]}>
-              ⚔️ {t.yourChars}
+              ⚔️
             </Text>
           </TouchableOpacity>
 
@@ -106,6 +108,14 @@ export default function TabBar() {
           ))}
         </ScrollView>
 
+        {/* Dice roller button */}
+        <TouchableOpacity
+          style={[styles.gearBtn, { borderLeftColor: colors.border }]}
+          onPress={() => setDiceOpen(true)}
+        >
+          <Text style={styles.gearIcon}>🎲</Text>
+        </TouchableOpacity>
+
         {/* Gear button */}
         <TouchableOpacity
           style={[styles.gearBtn, { borderLeftColor: colors.border }]}
@@ -116,6 +126,7 @@ export default function TabBar() {
       </View>
 
       <SettingsModal visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <DiceRollerModal visible={diceOpen} onClose={() => setDiceOpen(false)} />
     </>
   );
 }
