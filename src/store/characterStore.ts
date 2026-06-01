@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { getClassById } from '../data/classes';
 import { getRaceById } from '../data/races';
 import { getAutoTraitIdsUpToLevel } from '../data/classFeatures';
+import { getGrantedSpellsForTraits } from '../data/featureEffects';
 import { calculateStartingHp, rollDamage } from '../lib/dice';
 
 const EMPTY_DRAFT: CharacterDraft = {
@@ -12,6 +13,7 @@ const EMPTY_DRAFT: CharacterDraft = {
   race: '',
   className: '',
   level: 1,
+  skillProficiencies: [],
   abilityScores: {
     strength: 10,
     dexterity: 10,
@@ -21,6 +23,58 @@ const EMPTY_DRAFT: CharacterDraft = {
     charisma: 10,
   },
 };
+
+function mergeGrantedSpells(baseSpells: string[] | undefined, traits: string[] | undefined): string[] {
+  const merged = new Set<string>(baseSpells ?? []);
+  const granted = getGrantedSpellsForTraits(traits ?? []);
+  for (const sid of granted) merged.add(sid);
+  return [...merged];
+}
+
+function extractAutoAsiChoice(traitId: string): { featureId: string; bonuses: Partial<Record<AbilityName, number>> } | null {
+  const match = traitId.match(/^([a-z0-9]+)_asi(\d+)_([^]+)$/i);
+  if (!match) return null;
+
+  const [, classPrefix, asiLevel, tail] = match;
+  if (tail.includes('feat_')) return null;
+
+  const abilityMap: Record<string, AbilityName> = {
+    str: 'strength',
+    dex: 'dexterity',
+    con: 'constitution',
+    int: 'intelligence',
+    wis: 'wisdom',
+    cha: 'charisma',
+  };
+  const bonuses: Partial<Record<AbilityName, number>> = {};
+  const pattern = /([a-z]+)(\d+)/g;
+  let bonusMatch: RegExpExecArray | null;
+  while ((bonusMatch = pattern.exec(tail)) !== null) {
+    const ability = abilityMap[bonusMatch[1]];
+    const value = Number(bonusMatch[2]);
+    if (!ability || Number.isNaN(value)) continue;
+    bonuses[ability] = (bonuses[ability] ?? 0) + value;
+  }
+
+  if (Object.keys(bonuses).length === 0) return null;
+  return { featureId: `${classPrefix}_asi_${asiLevel}`, bonuses };
+}
+
+function mergeAutoAsiChoices(
+  traits: string[] | undefined,
+  existingChoices: Record<string, Partial<Record<AbilityName, number>>> | undefined,
+): Record<string, Partial<Record<AbilityName, number>>> {
+  const merged = { ...(existingChoices ?? {}) };
+  for (const traitId of traits ?? []) {
+    const autoChoice = extractAutoAsiChoice(traitId);
+    if (!autoChoice) continue;
+    const current = merged[autoChoice.featureId];
+    if (!current || Object.keys(current).length === 0) {
+      merged[autoChoice.featureId] = autoChoice.bonuses;
+    }
+  }
+  return merged;
+}
 
 interface CharacterStore {
   characters: Character[];
@@ -34,6 +88,7 @@ interface CharacterStore {
   setDraftRace: (race: string) => void;
   setDraftClass: (className: string) => void;
   setDraftLevel: (level: number) => void;
+  setDraftSkillProficiencies: (skillIds: string[]) => void;
   setDraftEquipment: (equipment: import('../types/equipment').Equipment[]) => void;
   setRolledValues: (values: number[]) => void;
   assignValue: (ability: AbilityName, value: number) => void;
@@ -131,6 +186,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   setDraftRace: (race) => set((s) => ({ draft: { ...s.draft, race } })),
   setDraftClass: (className) => set((s) => ({ draft: { ...s.draft, className } })),
   setDraftLevel: (level) => set((s) => ({ draft: { ...s.draft, level } })),
+  setDraftSkillProficiencies: (skillIds) => set((s) => ({ draft: { ...s.draft, skillProficiencies: skillIds } })),
   setDraftEquipment: (equipment) => set((s) => ({ draft: { ...s.draft, equipment } })),
 
   setRolledValues: (values) => set({ rolledValues: values, assignedValues: {} }),
@@ -174,16 +230,24 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       const migrated = await Promise.all(
         (data as Character[]).map(async (char) => {
           const autoTraits = getAutoTraitIdsUpToLevel(char.className, char.level);
-          if (autoTraits.length === 0) return char;
-          const existing = new Set(char.traits ?? []);
+          const existingTraits = char.traits ?? [];
+          const existing = new Set(existingTraits);
           const missing = autoTraits.filter((t) => !existing.has(t));
-          if (missing.length === 0) return char;
-          const merged = [...(char.traits ?? []), ...missing];
+          const mergedTraits = missing.length > 0 ? [...existingTraits, ...missing] : existingTraits;
+          const mergedAsiChoices = mergeAutoAsiChoices(mergedTraits, char.asiChoices);
+
+          const mergedSpells = mergeGrantedSpells(char.spells, mergedTraits);
+          const hadSpells = Array.isArray(char.spells) ? char.spells : [];
+          const spellsChanged = mergedSpells.length !== hadSpells.length;
+          const asiChoicesChanged = JSON.stringify(mergedAsiChoices) !== JSON.stringify(char.asiChoices ?? {});
+
+          if (missing.length === 0 && !spellsChanged && !asiChoicesChanged) return char;
+
           await supabase
             .from('characters')
-            .update({ traits: merged })
+            .update({ traits: mergedTraits, spells: mergedSpells, asiChoices: mergedAsiChoices })
             .eq('id', char.id);
-          return { ...char, traits: merged };
+          return { ...char, traits: mergedTraits, spells: mergedSpells, asiChoices: mergedAsiChoices };
         })
       );
       set({ characters: migrated });
@@ -196,6 +260,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const cls = getClassById(draft.className);
     const race = getRaceById(draft.race);
     const maxHp = cls ? calculateStartingHp(cls.hitDie, draft.abilityScores.constitution) : 8;
+    const draftSkillProficiencies = draft.skillProficiencies ?? [];
 
     // Build spell slots from class data
     const spellSlots: Character['spellSlots'] = {};
@@ -206,6 +271,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       });
     }
 
+    const autoTraits = getAutoTraitIdsUpToLevel(draft.className, draft.level);
     const newChar = {
       name: draft.name,
       race: draft.race,
@@ -216,7 +282,10 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       maxHp,
       spellSlots,
       speed: race?.speed ?? 30,
-      traits: getAutoTraitIdsUpToLevel(draft.className, draft.level),
+      traits: autoTraits,
+      spells: mergeGrantedSpells([], autoTraits),
+      skillProficiencies: draftSkillProficiencies,
+      proficiencies: draftSkillProficiencies.map((id) => ({ category: 'skill' as const, id, level: 'proficient' as const })),
       equipment: draft.equipment ?? [],
       // Pontos de Feitiçaria: sorcerer nível ≥ 2 começa com pontos = nível
       ...(draft.className === 'sorcerer' && draft.level >= 2
@@ -298,9 +367,12 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   },
 
   importCharacter: async (data) => {
+    const normalizedTraits = data.traits ?? [];
+    const normalizedSpells = mergeGrantedSpells(data.spells, normalizedTraits);
+    const normalizedAsiChoices = mergeAutoAsiChoices(normalizedTraits, data.asiChoices);
     const { data: inserted, error } = await supabase
       .from('characters')
-      .insert([data])
+      .insert([{ ...data, traits: normalizedTraits, spells: normalizedSpells, asiChoices: normalizedAsiChoices }])
       .select()
       .single();
     if (error) {
@@ -316,9 +388,10 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
     const current = char.spells ?? [];
-    const updated = current.includes(spellId)
+    const toggled = current.includes(spellId)
       ? current.filter((s) => s !== spellId)
       : [...current, spellId];
+    const updated = mergeGrantedSpells(toggled, char.traits ?? []);
     await supabase.from('characters').update({ spells: updated }).eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
@@ -358,6 +431,8 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     // Acumula traits existentes com os novos
     const existingTraits = char.traits ?? [];
     const mergedTraits = Array.from(new Set([...existingTraits, ...newTraits]));
+    const mergedSpells = mergeGrantedSpells(char.spells, mergedTraits);
+    const mergedAsiChoices = mergeAutoAsiChoices(mergedTraits, char.asiChoices);
 
     // Pontos de Feitiçaria: atualiza total no level up (sorcerer nível ≥ 2 = total igual ao nível)
     let sorceryPoints = char.sorceryPoints;
@@ -379,7 +454,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
         : undefined;
     }
 
-    const patch = { level: newLevel, maxHp: newMaxHp, hp: newHp, spellSlots, traits: mergedTraits,
+    const patch = { level: newLevel, maxHp: newMaxHp, hp: newHp, spellSlots, traits: mergedTraits, spells: mergedSpells, asiChoices: mergedAsiChoices,
       ...(sorceryPoints !== undefined ? { sorceryPoints } : {}),
       ...(kiPoints !== undefined ? { kiPoints } : {}) };
     const { error } = await supabase.from('characters').update(patch).eq('id', characterId);
@@ -838,15 +913,11 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
       if (error) console.warn('[resetFeatureActions] Supabase error (run migration):', error.message);
     } else {
       // short_rest: only reset short_rest-typed keys
-      const { FEATURE_EFFECTS } = await import('../data/featureEffects');
-      const traits = char.traits ?? [];
+      const { getActiveFeatureActions } = await import('../data/featureEffects');
+      const activeActions = getActiveFeatureActions(char.traits ?? []);
       const shortRestActionIds = new Set<string>();
-      for (const tid of traits) {
-        const fx = FEATURE_EFFECTS[tid];
-        if (!fx?.actions) continue;
-        for (const a of fx.actions) {
-          if (a.useType === 'short_rest') shortRestActionIds.add(a.id);
-        }
+      for (const a of activeActions) {
+        if (a.useType === 'short_rest') shortRestActionIds.add(a.id);
       }
       const updated = { ...(char.actionUses ?? {}) };
       for (const id of shortRestActionIds) delete updated[id];

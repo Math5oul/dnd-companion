@@ -1,5 +1,5 @@
 import { getRaceById } from '../data/races';
-import { FEATURE_EFFECTS } from '../data/featureEffects';
+import { getFeatureEffectsForTraits } from '../data/featureEffects';
 import type { Character } from '../types/character';
 import type { DamageType } from '../types/featureEffect';
 
@@ -47,10 +47,8 @@ export function computeCharacterStats(char: Character): EffectiveStats {
   const resistances = new Set<DamageType>();
   const conditionImmunities = new Set<string>();
 
-  // ── Features de classe ────────────────────────────────────────────────────
-  for (const traitId of char.traits ?? []) {
-    const fx = FEATURE_EFFECTS[traitId];
-    if (!fx) continue;
+  // ── Features de classe (diretas + derivadas por combinação de traits) ────
+  for (const fx of getFeatureEffectsForTraits(char.traits ?? [])) {
 
     // Se a feature tem uma ação toggle, seus efeitos condicionais (resistências,
     // etc.) só se aplicam enquanto o toggle estiver ativo.

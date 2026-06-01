@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import type { Character, AbilityName } from '../types/character';
 import { SKILLS, getProficiencyBonus, CLASS_SKILL_OPTIONS, CLASS_SKILL_COUNT } from '../data/skills';
 import { getClassById } from '../data/classes';
+import { CLASS_FEATURES } from '../data/classFeatures';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,13 +61,28 @@ export default function SkillsChecksPanel({
   );
 
   // Skill picking
-  const profs = char.skillProficiencies ?? [];
+  const profSet = new Set<string>(char.skillProficiencies ?? []);
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill') profSet.add(p.id);
+  });
+
+  const expertiseSet = new Set<string>();
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill' && p.level === 'expert') expertiseSet.add(p.id);
+  });
+
+  const classFeatures = (CLASS_FEATURES[char.className] ?? []).flatMap((lf) => lf.features);
+  classFeatures.forEach((f) => {
+    if (f.pickType !== 'expertise') return;
+    const selected = (char.featureChoices ?? {})[f.id] ?? [];
+    selected.forEach((sid) => expertiseSet.add(sid));
+  });
+
+  const profs = [...profSet];
   const classOptions = CLASS_SKILL_OPTIONS[char.className] ?? [];
   const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
   const eligibleOptions = classOptions.length === 0 ? SKILLS.map((s) => s.id) : classOptions;
   const remainingPicks = Math.max(0, maxPicks - profs.length);
-
-  console.log('[SkillsChecksPanel]', { className: char.className, profs, maxPicks, remainingPicks, eligibleOptions });
 
   function roll(id: string, bonus: number, adv: 'normal' | 'adv' | 'dis' = 'normal') {
     const d20 = rollD20(adv);
@@ -202,10 +218,11 @@ export default function SkillsChecksPanel({
 
               {/* ── Skills ── */}
               {skills.map((sk, idx) => {
-                const isProficient = profs.includes(sk.id);
+                const isExpert = expertiseSet.has(sk.id);
+                const isProficient = profs.includes(sk.id) || isExpert;
                 const isEligible = eligibleOptions.includes(sk.id);
                 const canPick = !isProficient && isEligible && remainingPicks > 0;
-                const skillBonus = mod + (isProficient ? prof : 0);
+                const skillBonus = mod + (isExpert ? prof * 2 : isProficient ? prof : 0);
                 const rid = `skill_${sk.id}`;
                 const result = results[rid];
                 const skillName = pt ? sk.name : sk.nameEn;
@@ -258,6 +275,12 @@ export default function SkillsChecksPanel({
                       }}>
                         {fmtMod(skillBonus)}
                       </Text>
+
+                      {isExpert && (
+                        <Text style={{ color: '#ffd700', fontSize: 11, minWidth: 24, textAlign: 'right', marginLeft: 4 }}>
+                          x2
+                        </Text>
+                      )}
 
                       {result ? (
                         <Text style={{ color: result.critical ? '#ffd700' : c.accent, fontWeight: '800', fontSize: 14, minWidth: 50, textAlign: 'right' }}>

@@ -14,6 +14,7 @@ import {
   getSpellTraitBonuses,
   traitBonusesForSpell,
   computeSpellRange,
+  applySpellTraitRange,
 } from '../lib/metamagic';
 import { rollDamage } from '../lib/dice';
 import { useTurnStore } from '../store/turnStore';
@@ -181,6 +182,9 @@ export default function SpellsPanel({
 
       const relevant = spellObj ? traitBonusesForSpell(spellTraitBonuses, spellObj) : [];
       const extraDmgBonus = relevant.reduce((s, b) => s + b.damageBonus, 0);
+      const traitEffectNotes = relevant
+        .map((b) => language === 'en' ? b.noteEn : b.notePt)
+        .filter((n): n is string => !!n);
 
       let finalDmg: number | undefined;
       let finalDmgDetail: string | undefined;
@@ -207,6 +211,9 @@ export default function SpellsPanel({
       if (chosenMeta.has('heightened'))
         notes = (notes ?? '') + `  ⬇️ ${L('Alvo: desv. resist.', 'Target: disadv save')}`;
       if (chosenMeta.has('twinned')) notes = (notes ?? '') + `  ×2 ${L('alvos', 'targets')}`;
+      if (traitEffectNotes.length > 0) {
+        notes = (notes ? notes + ' · ' : '') + traitEffectNotes.join(' · ');
+      }
 
       setSpellCastResults((prev) => ({
         ...prev,
@@ -223,6 +230,9 @@ export default function SpellsPanel({
     if (dmgStr) {
       const relevant = spellObj ? traitBonusesForSpell(spellTraitBonuses, spellObj) : [];
       const extraDmgBonus = relevant.reduce((s, b) => s + b.damageBonus, 0);
+      const traitEffectNotes = relevant
+        .map((b) => language === 'en' ? b.noteEn : b.notePt)
+        .filter((n): n is string => !!n);
       const baseDmgExpr = extraDmgBonus ? `${dmgStr}+${extraDmgBonus}` : dmgStr;
       const metaResult = applyMetamagicToDamage(baseDmgExpr, chosenMeta, char);
       const rolledDmg = rollDamage(metaResult.dmg);
@@ -235,6 +245,9 @@ export default function SpellsPanel({
       if (chosenMeta.has('heightened'))
         notes = (notes ?? '') + `  ⬇️ ${L('Alvo: desv. resist.', 'Target: disadv save')}`;
       if (chosenMeta.has('twinned')) notes = (notes ?? '') + `  ×2 ${L('alvos', 'targets')}`;
+      if (traitEffectNotes.length > 0) {
+        notes = (notes ? notes + ' · ' : '') + traitEffectNotes.join(' · ');
+      }
       setSpellCastResults((prev) => ({
         ...prev,
         [spellKey]: { dmg: rolledDmg.total, dmgDetail: rolledDmg.detail, notes },
@@ -332,9 +345,14 @@ export default function SpellsPanel({
     const castResult = spellCastResults[spellKey];
     const adv = spellAdv[spellKey] ?? 'normal';
     const chosenMeta = spellMeta[spellKey] ?? new Set<string>();
-    const effectiveRange = computeSpellRange(sp.range, chosenMeta);
-    const rangeModified = chosenMeta.has('distant') && effectiveRange !== sp.range;
     const relevantBonuses = traitBonusesForSpell(spellTraitBonuses, sp);
+    const traitBaseRange = applySpellTraitRange(sp.range, relevantBonuses);
+    const effectiveRange = computeSpellRange(traitBaseRange, chosenMeta);
+    const rangeModified = effectiveRange !== sp.range;
+    const dmgBonusTotal = relevantBonuses.reduce((s, b) => s + b.damageBonus, 0);
+    const traitEffectNotes = relevantBonuses
+      .map((b) => language === 'en' ? b.noteEn : b.notePt)
+      .filter((n): n is string => !!n);
     const castingCostKey = castingTimeToCost(sp.castingTime ?? '1 ação');
     const effectiveCostKey: ActionCostKey = chosenMeta.has('quickened') && castingCostKey === 'action' ? 'bonus' : castingCostKey;
     const badge = COST_BADGE[effectiveCostKey];
@@ -392,11 +410,19 @@ export default function SpellsPanel({
           </View>
 
           {/* Trait bonuses */}
-          {relevantBonuses.length > 0 && (
-            <Text style={{ color: tc.accent, fontSize: 10, marginLeft: 24 }}>
-              +{relevantBonuses.reduce((s, b) => s + b.damageBonus, 0)}{' '}
-              {language === 'en' ? relevantBonuses[0].labelEn : relevantBonuses[0].labelPt}
-            </Text>
+          {(dmgBonusTotal !== 0 || traitEffectNotes.length > 0) && (
+            <View style={{ marginLeft: 24, marginTop: 2 }}>
+              {dmgBonusTotal !== 0 && (
+                <Text style={{ color: tc.accent, fontSize: 10 }}>
+                  +{dmgBonusTotal} {L('dano de trait', 'trait damage')}
+                </Text>
+              )}
+              {traitEffectNotes.map((note, idx) => (
+                <Text key={`${spellKey}-trait-note-${idx}`} style={{ color: tc.subtext, fontSize: 10 }}>
+                  • {note}
+                </Text>
+              ))}
+            </View>
           )}
 
           {/* Metamagic chips */}

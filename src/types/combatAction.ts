@@ -81,6 +81,8 @@ export interface CombatAction {
   consumeCharge?: boolean;
   /** Cargas restantes (para desabilitar quando 0) */
   charges?: number;
+  /** Cargas máximas do item (para exibição dos pips) */
+  maxCharges?: number;
 
   // ── Magia ───────────────────────────────────────────────
   spellId?: string;

@@ -286,10 +286,21 @@ export default function CombatPanel({
           )}
           {/* Consumable charge pips */}
           {action.consumeCharge && action.charges !== undefined && (
-            <View style={s.pips}>
-              {Array.from({ length: action.charges }).map((_, i) => (
-                <View key={i} style={[s.pip(c), s.pipFull(c)]} />
-              ))}
+            <View style={s.chargeBlock}>
+              <View style={s.pips}>
+                {Array.from({ length: action.maxCharges ?? action.charges }).map((_, i) => {
+                  const isFilled = i < action.charges;
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        s.pip(c),
+                        isFilled ? s.pipFull(c) : s.pipEmpty(c),
+                      ]}
+                    />
+                  );
+                })}
+              </View>
             </View>
           )}
         </View>
@@ -428,6 +439,7 @@ const s = {
   sourceText: { fontSize: 10, fontWeight: '600' as const },
 
   pips: { flexDirection: 'row' as const, gap: 3, alignSelf: 'center' as const },
+  chargeBlock: { alignSelf: 'center' as const, alignItems: 'center' as const, gap: 3 },
 
   pip: (_c: TC) => ({ width: 9, height: 9, borderRadius: 5 } as const),
   pipFull: (c: TC) => ({ backgroundColor: c.accent } as const),

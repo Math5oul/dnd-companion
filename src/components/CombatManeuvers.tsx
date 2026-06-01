@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../types/character';
 import { getProficiencyBonus } from '../data/skills';
+import { CLASS_FEATURES } from '../data/classFeatures';
 
 function getModifier(score: number) { return Math.floor((score - 10) / 2); }
 function fmtMod(n: number) { return n >= 0 ? `+${n}` : `${n}`; }
@@ -65,13 +66,28 @@ export default function CombatManeuvers({
   const kiStepActive = activeTraitEffects.has('ki_step');
   const kiDodgeActive = activeTraitEffects.has('ki_dodge');
 
-  const hasAthletics = (char.skillProficiencies ?? []).includes('athletics');
-  const hasStealth   = (char.skillProficiencies ?? []).includes('stealth');
-  const hasAcrobatics = (char.skillProficiencies ?? []).includes('acrobatics');
+  const skillProfSet = new Set<string>(char.skillProficiencies ?? []);
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill') skillProfSet.add(p.id);
+  });
+  const expertiseSet = new Set<string>();
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill' && p.level === 'expert') expertiseSet.add(p.id);
+  });
+  const classFeatures = (CLASS_FEATURES[char.className] ?? []).flatMap((lf) => lf.features);
+  classFeatures.forEach((f) => {
+    if (f.pickType !== 'expertise') return;
+    const selected = (char.featureChoices ?? {})[f.id] ?? [];
+    selected.forEach((sid) => expertiseSet.add(sid));
+  });
 
-  const athleticsBonus = strMod + (hasAthletics ? prof : 0);
-  const stealthBonus   = dexMod + (hasStealth   ? prof : 0);
-  const acrobaticsBonus = dexMod + (hasAcrobatics ? prof : 0);
+  const hasAthletics = skillProfSet.has('athletics') || expertiseSet.has('athletics');
+  const hasStealth   = skillProfSet.has('stealth') || expertiseSet.has('stealth');
+  const hasAcrobatics = skillProfSet.has('acrobatics') || expertiseSet.has('acrobatics');
+
+  const athleticsBonus = strMod + (expertiseSet.has('athletics') ? prof * 2 : hasAthletics ? prof : 0);
+  const stealthBonus   = dexMod + (expertiseSet.has('stealth') ? prof * 2 : hasStealth ? prof : 0);
+  const acrobaticsBonus = dexMod + (expertiseSet.has('acrobatics') ? prof * 2 : hasAcrobatics ? prof : 0);
 
   const pt = language === 'pt';
 

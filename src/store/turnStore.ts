@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { TurnState, GameSession } from '../types/turnState';
 import type { Character } from '../types/character';
 import { computeCharacterStats } from '../lib/characterStats';
-import { FEATURE_EFFECTS } from '../data/featureEffects';
+import { getFeatureEffectsForTraits } from '../data/featureEffects';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,8 +18,7 @@ function genId(): string {
 function calcActionsTotal(char: Character): number {
   const actionUses = char.actionUses ?? {};
   let extra = 0;
-  for (const traitId of char.traits ?? []) {
-    const fx = FEATURE_EFFECTS[traitId];
+  for (const fx of getFeatureEffectsForTraits(char.traits ?? [])) {
     if (!fx?.actions) continue;
     for (const a of fx.actions) {
       if (a.grantsExtraActions && (actionUses[a.id] ?? a.maxUses ?? 0) > 0) {

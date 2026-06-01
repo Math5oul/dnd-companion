@@ -17,6 +17,9 @@ const TWF_IDS = new Set([
 const GWFS_IDS = new Set([
   'fighter_style_gwf',
 ]);
+const IMPROVED_DIVINE_SMITE_IDS = new Set([
+  'paladin_improved_divine_smite',
+]);
 
 /** Retorna o bônus de dano de Fúria pelo nível */
 function rageDamageBonus(level: number): number {
@@ -116,6 +119,18 @@ export function buildCombatActions(char: Character): CombatAction[] {
     });
   }
 
+  const hasImprovedDivineSmite = traits.some((t) => IMPROVED_DIVINE_SMITE_IDS.has(t));
+  if (hasImprovedDivineSmite) {
+    modifiers.push({
+      id: 'improved_divine_smite',
+      labelPt: 'Golpe Divino Aprimorado (+1d8 radiante)',
+      labelEn: 'Improved Divine Smite (+1d8 radiant)',
+      damageExtra: '1d8',
+      conditionPt: 'Ataques corpo-a-corpo com arma',
+      conditionEn: 'Melee weapon attacks',
+    });
+  }
+
   const sneakDice = sneakAttackDice(traits);
   if (sneakDice) {
     modifiers.push({
@@ -137,6 +152,7 @@ export function buildCombatActions(char: Character): CombatAction[] {
       if (m.id === 'dueling') return tags.includes('melee');
       if (m.id === 'twf') return tags.includes('melee');
       if (m.id === 'gwf') return tags.includes('melee');
+      if (m.id === 'improved_divine_smite') return tags.includes('melee');
       if (m.id === 'sneak_attack') return tags.includes('melee') || tags.includes('ranged');
       return false;
     });
@@ -202,6 +218,7 @@ export function buildCombatActions(char: Character): CombatAction[] {
         attackId: atk.id,
         consumeCharge: isConsumable,
         charges: isConsumable ? (item.charges ?? 0) : undefined,
+        maxCharges: isConsumable ? item.maxCharges : undefined,
       });
     }
   }
@@ -252,11 +269,17 @@ export function buildCombatActions(char: Character): CombatAction[] {
   try {
     /* eslint-disable @typescript-eslint/no-var-requires */
     const { getSpellById, getSpellDamage, SCHOOL_ICON } = require('../data/spells') as typeof import('../data/spells');
-    const { spellAttackBonus } = require('./metamagic') as typeof import('./metamagic');
+    const {
+      spellAttackBonus,
+      getSpellTraitBonuses,
+      traitBonusesForSpell,
+      applySpellTraitRange,
+    } = require('./metamagic') as typeof import('./metamagic');
     /* eslint-enable @typescript-eslint/no-var-requires */
 
     const spellAtk = spellAttackBonus(char);
     const spellDC  = 8 + spellAtk;
+    const spellTraitBonuses = getSpellTraitBonuses(char);
 
     /** Mapeia o texto de tempo de conjuração para ActionCost */
     const castingTimeToActionCost = (ct: string): ActionCost => {
@@ -280,8 +303,22 @@ export function buildCombatActions(char: Character): CombatAction[] {
       // Dano base (para cantrip considera escala de nível)
       const fullDmg = sp.level === 0 ? getSpellDamage(sp, char.level) : (sp.damage ?? null);
       const dmgParts = fullDmg?.match(/^([^\s]+)\s*(.*)/);
-      const dmgDice = dmgParts?.[1] ?? undefined;
+      const relevantBonuses = traitBonusesForSpell(spellTraitBonuses, sp);
+      const extraDmgBonus = relevantBonuses.reduce((sum, b) => sum + b.damageBonus, 0);
+      const baseDmgDice = dmgParts?.[1] ?? undefined;
+      const dmgDice = baseDmgDice
+        ? (extraDmgBonus ? `${baseDmgDice}+${extraDmgBonus}` : baseDmgDice)
+        : undefined;
       const dmgType = dmgParts?.[2] || undefined;
+      const traitRange = applySpellTraitRange(sp.range, relevantBonuses);
+      const traitNotesPt = relevantBonuses.map((b) => b.notePt).filter((n): n is string => !!n);
+      const traitNotesEn = relevantBonuses.map((b) => b.noteEn).filter((n): n is string => !!n);
+      const descPt = traitNotesPt.length > 0
+        ? `${sp.description}\n• ${traitNotesPt.join('\n• ')}`
+        : sp.description;
+      const descEn = traitNotesEn.length > 0
+        ? `${sp.description}\n• ${traitNotesEn.join('\n• ')}`
+        : sp.description;
 
       actions.push({
         id: `spell:${sp.id}`,
@@ -290,15 +327,15 @@ export function buildCombatActions(char: Character): CombatAction[] {
         sourceNameEn: 'Spell',
         namePt: sp.name,
         nameEn: sp.name,
-        descPt: sp.description,
-        descEn: sp.description,
+        descPt,
+        descEn,
         icon: SCHOOL_ICON[sp.school] ?? '🪄',
         actionCost: castingTimeToActionCost(sp.castingTime),
         tags: ['magical'],
         attackBonus: sp.attackRoll ? spellAtk : undefined,
         damage: dmgDice,
         damageType: dmgType,
-        range: sp.range,
+        range: traitRange,
         modifiers: [],
         spellId: sp.id,
         spellLevel: sp.level,

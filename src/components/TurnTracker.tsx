@@ -374,6 +374,26 @@ function ActionCard({
         </Text>
       )}
 
+      {/* Consumable charge markers */}
+      {action.consumeCharge && action.charges !== undefined && (
+        <View style={ac.chargeRow}>
+          <View style={ac.pips}>
+            {Array.from({ length: action.maxCharges ?? action.charges }).map((_, i) => {
+              const isFilled = i < action.charges;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    ac.pip,
+                    isFilled ? ac.pipFull : ac.pipEmpty,
+                  ]}
+                />
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* Uses remaining / Ki cost */}
       {!isAtWill && remaining !== null && action.maxUses && (
         <Text style={ac.uses}>{remaining}/{action.maxUses}</Text>
@@ -407,6 +427,11 @@ const ac = StyleSheet.create({
   costText: { fontSize: 11, fontWeight: 'bold' },
   stats: { color: '#888', fontSize: 11, marginBottom: 2 },
   activeBadge: { fontSize: 10, fontWeight: 'bold', marginTop: 2 },
+  chargeRow: { marginTop: 4, alignItems: 'flex-start' as const },
+  pips: { flexDirection: 'row' as const, gap: 4 },
+  pip: { width: 9, height: 9, borderRadius: 5, borderWidth: 1 },
+  pipFull: { backgroundColor: '#3da1c8', borderColor: '#3da1c8' },
+  pipEmpty: { backgroundColor: 'transparent', borderColor: '#555' },
   slotBadge: { color: '#9c5de0', fontSize: 10, marginTop: 2 },
   uses: { color: '#666', fontSize: 10, marginTop: 2 },
   resultBox: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#333' },
@@ -456,6 +481,7 @@ function ConsumableCard({
   };
 
   const charges = item.charges ?? 1;
+  const maxCharges = item.maxCharges ?? charges;
   const effectDesc = item.useEffect
     ? item.useEffect.type === 'heal'
       ? `${item.useEffect.dice} ${L('cura', 'healing')}`
@@ -492,8 +518,8 @@ function ConsumableCard({
       {!!effectDesc && (
         <Text style={ac.stats}>{effectDesc}</Text>
       )}
-      {charges > 1 && (
-        <Text style={ac.uses}>{charges}× {L('cargas', 'charges')}</Text>
+      {maxCharges > 1 && (
+        <Text style={ac.uses}>{charges}/{maxCharges} {L('cargas', 'charges')}</Text>
       )}
 
       {result && (
@@ -540,6 +566,8 @@ export default function TurnTracker({
   const movementRemaining = turn ? turn.movementTotal - turn.movementUsed : 0;
   const movementPct = turn && turn.movementTotal > 0
     ? 1 - turn.movementUsed / turn.movementTotal : 0;
+  const movementStep = 5;
+  const movementStepLabel = convertSpeed(movementStep, units, language);
 
   // ── Sem sessão ─────────────────────────────────────────────────────────────
   if (!isInSession) {
@@ -681,19 +709,19 @@ export default function TurnTracker({
                 <View style={styles.moveSteppers}>
                   <TouchableOpacity
                     style={[styles.stepBtn, turn.movementUsed === 0 && styles.stepDisabled]}
-                    onPress={() => undoMovement(char.id, 5)}
+                    onPress={() => undoMovement(char.id, movementStep)}
                     disabled={turn.movementUsed === 0}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.stepText, { color: c.text }]}>−5ft</Text>
+                    <Text style={[styles.stepText, { color: c.text }]}>{`−${movementStepLabel}`}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.stepBtn, movementRemaining < 5 && styles.stepDisabled]}
-                    onPress={() => useMovement(char.id, 5)}
-                    disabled={movementRemaining < 5}
+                    style={[styles.stepBtn, movementRemaining < movementStep && styles.stepDisabled]}
+                    onPress={() => useMovement(char.id, movementStep)}
+                    disabled={movementRemaining < movementStep}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.stepText, { color: c.text }]}>+5ft</Text>
+                    <Text style={[styles.stepText, { color: c.text }]}>{`+${movementStepLabel}`}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -758,9 +786,9 @@ export default function TurnTracker({
                   themeColors={c}
                   onUse={async () => {
                     useBonusAction(char.id);
-                    const isStatOrAttack =
-                      (item.bonuses.length > 0 || item.attacks.length > 0) && !item.useEffect;
-                    if (isStatOrAttack) {
+                    const grantsPersistentAttack = item.attacks.length > 0;
+                    const grantsPersistentStats = item.bonuses.length > 0;
+                    if (grantsPersistentAttack || grantsPersistentStats) {
                       await activateConsumable(char.id, item.id);
                       return { hpGained: 0, detail: '' };
                     }

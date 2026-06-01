@@ -1760,6 +1760,30 @@ export const SPELLS: Spell[] = [
     description: 'A magia mais poderosa. Duplica qualquer outra magia ≤ 8°, ou solicita um efeito impossível ao universo. Risco de não poder conjurar Wish novamente.',
     classes: ['wizard', 'sorcerer'],
   },
+  {
+    id: 'arcane-eye', name: 'Olho Arcano', level: 4, school: 'Adivinhação',
+    castingTime: '1 ação', range: '9m', duration: 'Concentração, 1 hora',
+    description: 'Cria um olho mágico invisível que vê em todas as direções e pode mover-se até 9m por turno. Você enxerga através dele como ação.',
+    classes: ['wizard', 'warlock'],
+  },
+  {
+    id: 'speak-with-dead', name: 'Falar com os Mortos', level: 3, school: 'Necromancia',
+    castingTime: '1 ação', range: '3m', duration: '10 minutos',
+    description: 'Concede semelhança de vida a um cadáver para responder até 5 perguntas. O cadáver só sabe o que sabia em vida.',
+    classes: ['cleric', 'bard', 'warlock'],
+  },
+  {
+    id: 'freedom-of-movement', name: 'Liberdade de Movimento', level: 4, school: 'Transmutação',
+    castingTime: '1 ação', range: 'Toque', duration: '1 hora',
+    description: 'O alvo ignora terreno difícil, efeitos que reduzam deslocamento e pode escapar de imobilização não mágica pagando 1,5m de movimento.',
+    classes: ['cleric', 'druid', 'bard', 'ranger', 'warlock'],
+  },
+  {
+    id: 'conjure-elemental', name: 'Conjurar Elemental', level: 5, school: 'Conjuração',
+    castingTime: '1 minuto', range: '27m', duration: 'Concentração, 1 hora',
+    description: 'Convoca um elemental de ND 5 ou menor em espaço desocupado dentro do alcance. Se perder concentração, ele pode se tornar hostil.',
+    classes: ['wizard', 'druid', 'warlock'],
+  },
 ];
 
 export function getSpellDamage(spell: Spell, charLevel: number): string | null {

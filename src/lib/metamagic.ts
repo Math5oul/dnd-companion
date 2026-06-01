@@ -126,10 +126,17 @@ export interface SpellTraitBonus {
   labelPt: string;
   labelEn: string;
   damageBonus: number;
+  /** se definido, substitui o alcance base da magia */
+  rangeOverride?: string;
+  /** nota mecânica exibida ao conjurar (ex: empurrar 3m) */
+  notePt?: string;
+  noteEn?: string;
   /** se definido, só aplica a esta magia */
   onlySpellId?: string;
   /** se definido, só aplica a esta escola */
   onlySchool?: string;
+  /** se definido, aplica só quando spell.damage contém uma dessas palavras */
+  onlyDamageKeywords?: string[];
 }
 
 export function getSpellTraitBonuses(char: Character): SpellTraitBonus[] {
@@ -164,7 +171,78 @@ export function getSpellTraitBonuses(char: Character): SpellTraitBonus[] {
     }
   }
 
+  // Radiant Soul (Celestial 6): +CHA ao dano de magia de fogo/radiante
+  if (traits.includes('wlock_l6_celestial')) {
+    const mod = getModifier(char.abilityScores.charisma);
+    if (mod !== 0) {
+      bonuses.push({
+        id: 'radiant_soul',
+        labelPt: `Alma Radiante (+${mod} dano fogo/radiante)`,
+        labelEn: `Radiant Soul (+${mod} fire/radiant dmg)`,
+        damageBonus: mod,
+        onlyDamageKeywords: ['fogo', 'radiante'],
+      });
+    }
+  }
+
+  // Eldritch Spear: alcance da Explosão Mística vira 90m
+  if (traits.includes('wlock_inv_eldritch_spear')) {
+    bonuses.push({
+      id: 'eldritch_spear',
+      labelPt: 'Lança Abisal (alcance 90m)',
+      labelEn: 'Eldritch Spear (range 90m)',
+      damageBonus: 0,
+      rangeOverride: '90m',
+      onlySpellId: 'eldritch-blast',
+    });
+  }
+
+  // Repelling Blast: ao acertar, empurra 3m
+  if (traits.includes('wlock_inv_repelling') || traits.includes('wlock_inv3_repelling')) {
+    bonuses.push({
+      id: 'repelling_blast',
+      labelPt: 'Expulsão Abisal',
+      labelEn: 'Repelling Blast',
+      damageBonus: 0,
+      notePt: 'Ao acertar: empurra 3m',
+      noteEn: 'On hit: push 3m',
+      onlySpellId: 'eldritch-blast',
+    });
+  }
+
+  // Grasp of Hadar: puxa 3m em direção a você
+  if (traits.includes('wlock_inv_grasp_hadar')) {
+    bonuses.push({
+      id: 'grasp_of_hadar',
+      labelPt: 'Tentáculos de Hadar',
+      labelEn: 'Grasp of Hadar',
+      damageBonus: 0,
+      notePt: 'Ao acertar: puxa 3m',
+      noteEn: 'On hit: pull 3m',
+      onlySpellId: 'eldritch-blast',
+    });
+  }
+
+  // Lance of Lethargy: reduz deslocamento do alvo em 3m
+  if (traits.includes('wlock_inv3_lance_lethargy')) {
+    bonuses.push({
+      id: 'lance_of_lethargy',
+      labelPt: 'Lança da Letargia',
+      labelEn: 'Lance of Lethargy',
+      damageBonus: 0,
+      notePt: 'Ao acertar: alvo -3m de deslocamento',
+      noteEn: 'On hit: target speed -3m',
+      onlySpellId: 'eldritch-blast',
+    });
+  }
+
   return bonuses;
+}
+
+/** Resolve o alcance efetivo de uma magia considerando bonuses de trait. */
+export function applySpellTraitRange(baseRange: string, bonuses: SpellTraitBonus[]): string {
+  const override = bonuses.find((b) => !!b.rangeOverride)?.rangeOverride;
+  return override ?? baseRange;
 }
 
 /** Filtra os bônus que se aplicam a uma magia específica */
@@ -175,6 +253,11 @@ export function traitBonusesForSpell(
   return bonuses.filter((b) => {
     if (b.onlySpellId && b.onlySpellId !== spell.id) return false;
     if (b.onlySchool && b.onlySchool !== spell.school) return false;
+    if (b.onlyDamageKeywords?.length) {
+      const dmg = (spell.damage ?? '').toLowerCase();
+      if (!dmg) return false;
+      if (!b.onlyDamageKeywords.some((k) => dmg.includes(k.toLowerCase()))) return false;
+    }
     return true;
   });
 }

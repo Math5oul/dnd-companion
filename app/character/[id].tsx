@@ -221,6 +221,16 @@ export default function CharacterSheet() {
     [char],
   );
 
+  const levelUpSkillPool = useMemo(() => {
+    const merged = new Set<string>(char?.skillProficiencies ?? []);
+    (char?.proficiencies ?? []).forEach((p) => {
+      if (p.category === 'skill') merged.add(p.id);
+    });
+    return [...merged];
+  }, [char?.skillProficiencies, char?.proficiencies]);
+
+  const sheetSkillPool = levelUpSkillPool;
+
   if (loading || (!char && characters.length === 0)) {
     return (
       <View style={styles.notFound}>
@@ -572,7 +582,7 @@ export default function CharacterSheet() {
 
       {/* ── Perícias & Testes (unified) ── */}
       {(() => {
-        const profs = char.skillProficiencies ?? [];
+        const profs = sheetSkillPool;
         const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
         const remainingPicks = Math.max(0, maxPicks - profs.length);
         const profBonus = getProficiencyBonus(char.level);
@@ -735,8 +745,8 @@ export default function CharacterSheet() {
                               style={styles.featurePickBtn}
                               onPress={() => {
                                 const availableSkills = pickType === 'expertise'
-                                  ? (char.skillProficiencies ?? [])
-                                  : (directFeature!.pickSkills!.length > 0 ? directFeature!.pickSkills! : (char.skillProficiencies ?? []));
+                                  ? sheetSkillPool
+                                  : (directFeature!.pickSkills!.length > 0 ? directFeature!.pickSkills! : sheetSkillPool);
                                 setFeaturePickerModal({
                                   featureId: tid,
                                   featureName: language === 'en' ? info.name : localizeFeatureName(tid, info.name, language),
@@ -899,7 +909,11 @@ export default function CharacterSheet() {
                     <TouchableOpacity
                       style={styles.useBtn}
                       onPress={() => {
-                        if (item.useEffect) {
+                        const grantsCombatAttack = item.attacks.length > 0;
+                        const grantsPersistentStats = item.bonuses.length > 0;
+                        if (grantsCombatAttack || grantsPersistentStats) {
+                          activateConsumable(char.id, item.id);
+                        } else if (item.useEffect) {
                           handleUseCharge(item.id, item.name);
                         } else {
                           activateConsumable(char.id, item.id);
@@ -908,7 +922,9 @@ export default function CharacterSheet() {
                       activeOpacity={0.7}
                     >
                       <Text style={styles.useBtnText}>
-                        {item.useEffect?.type === 'heal'
+                        {item.attacks.length > 0
+                          ? (language === 'en' ? '🧪 Drink — gain attack' : '🧪 Beber — ganha ataque')
+                          : item.useEffect?.type === 'heal'
                           ? (language === 'en' ? `🧪 Use — ${item.useEffect.dice} HP` : `🧪 Usar — ${item.useEffect.dice} PV`)
                           : (language === 'en' ? '🧪 Drink' : '🧪 Beber')}
                       </Text>
@@ -1050,10 +1066,15 @@ export default function CharacterSheet() {
         classId={char.className}
         currentLevel={char.level}
         existingTraits={char.traits ?? []}
+        existingSkillChoices={char.featureChoices ?? {}}
+        skillProficiencies={levelUpSkillPool}
         onCancel={() => setModal(null)}
-        onConfirm={(selectedTraits) => {
+        onConfirm={async (selectedTraits, selectedSkillChoices) => {
           setModal(null);
-          levelUp(char.id, selectedTraits);
+          await levelUp(char.id, selectedTraits);
+          for (const [featureId, skillIds] of Object.entries(selectedSkillChoices)) {
+            await saveFeatureChoice(char.id, featureId, skillIds);
+          }
         }}
       />
       <ConfirmModal

@@ -3,7 +3,7 @@
 Aplicativo **mobile e web** para acompanhar personagens de Dungeons & Dragons 5ª Edição.  
 Construído com Expo + React Native, Zustand e Supabase — funciona no navegador, Android e iOS.
 
-��� **Deploy**: https://dnd-companion-ivory.vercel.app
+🚀 **Deploy**: https://dnd-companion-ivory.vercel.app
 
 ---
 
@@ -17,6 +17,7 @@ Construído com Expo + React Native, Zustand e Supabase — funciona no navegado
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Funcionalidades](#funcionalidades)
 - [Guia do Jogador](#guia-do-jogador)
+- [Status de Implementação e Backlog](#status-de-implementação-e-backlog)
 
 ---
 
@@ -172,7 +173,7 @@ vercel dist --prod
 - ✅ **Painel de Combate Unificado** (gaveta colapsável) com 3 grupos:
   - ⚔️ **Ataques de Armas** — armas equipadas com bônus e dano calculados automaticamente
   - ⚡ **Ações de Trait** — ações geradas por features (Ataque Furioso, Divine Smite, etc.)
-  - ��� **Consumíveis** — itens ativados com cargas restantes
+  - 🧪 **Consumíveis** — itens ativados com cargas restantes
 - ✅ Toggle **ADV / Normal / DIS** por ação — rola 2d20 e toma o maior ou menor
 - ✅ Modificadores colapsáveis (Fighting Styles, Dueling, Great Weapon Fighting…)
 - ✅ Acerto Crítico (20 natural) — dobra dados de dano automaticamente
@@ -206,7 +207,7 @@ vercel dist --prod
 - ✅ Invocações Eldritch, Metamagias selecionáveis, Fighting Styles
 
 ### Equipamentos e Inventário
-- ✅ Duas gavetas: ⚔️ Equipamentos (equipados) e ��� Inventário (não equipados + consumíveis)
+- ✅ Duas gavetas: ⚔️ Equipamentos (equipados) e 🎒 Inventário (não equipados + consumíveis)
 - ✅ Catálogo com 35+ itens: armas, armaduras (couro → placas), escudos, acessórios mágicos
 - ✅ Consumíveis com cargas; poções de status com `activeEffects`
 - ✅ Peso de cada item; carga atual vs. capacidade (STR × 15) com cor dinâmica
@@ -241,29 +242,29 @@ vercel dist --prod
 - Abra a gaveta **⚔️ Combate**
 - Toggle **◈ Normal / ▲ ADV / ▼ DIS** para alterar o tipo de rolagem
 - Expanda **▶ N modificadores** para ver quais estão ativos
-- **��� Rolar** — resultado por 6 segundos; ��� CRIT! em dourado dobra os dados
+- **🎲 Rolar** — resultado por 6 segundos; **💥 CRIT!** em dourado dobra os dados
 
 ### Magias com Metamagia (Feiticeiro)
 
 1. Abra a gaveta **Magias**
 2. Chips de metamagia aparecem abaixo de cada magia com custo em SP
 3. Selecione os chips desejados (inacessíveis ficam transparentes)
-4. **��� Atacar / Conjurar** — SP consumidos automaticamente
+4. **⚔️ Atacar / Conjurar** — SP consumidos automaticamente
 
 ### Descansos
 
 | Ação | Efeito |
 |---|---|
 | ☀️ Descanso Curto | Rola Dados de Vida para recuperar HP |
-| ��� Descanso Longo | HP total + todos os slots + reseta efeitos temporários |
+| 🌙 Descanso Longo | HP total + todos os slots + reseta efeitos temporários |
 | ⬆️ Level Up | Avança nível com rolagem de HP |
-| ��� Compartilhar | Resumo em texto para WhatsApp/Discord |
+| 📤 Compartilhar | Resumo em texto para WhatsApp/Discord |
 
 ### Equipamentos
 
-- ��� **Inventário** → **"+ Adicionar Item"** → catálogo ou manual
+- 🎒 **Inventário** → **"+ Adicionar Item"** → catálogo ou manual
 - Toque no ícone de equipar para mover para ⚔️ **Equipamentos**
-- Consumíveis: **"��� Beber/Usar"** para ativar (aparece no Painel de Combate)
+- Consumíveis: **"🧪 Beber/Usar"** para ativar (aparece no Painel de Combate)
 
 ---
 
@@ -285,6 +286,57 @@ gold            NUMERIC
 ```
 
 Execute `supabase/schema.sql` para criar ou migrar.
+
+---
+
+## Status de Implementação e Backlog
+
+### Relatórios de cobertura
+
+- `docs/traits-nao-implementados.md` — inventário completo de IDs de traits sem mapeamento direto em `src/data/featureEffects.ts`.
+- `docs/faltantes-mecanicas.md` — backlog funcional por classe + pendências para companion completo.
+
+### Como interpretar
+
+- Nem todo ID ausente em `featureEffects` é bug: vários são estruturais (escolhas, ASI, progressão de slot, marcadores de nível).
+- Para priorização prática, use o backlog funcional em `docs/faltantes-mecanicas.md`.
+
+### Regenerar inventário de traits sem mapeamento direto
+
+```bash
+node <<'NODE'
+const fs=require('fs');
+const cf=fs.readFileSync('src/data/classFeatures.ts','utf8');
+const ff=fs.readFileSync('src/data/featureEffects.ts','utf8');
+const classBlockRe=/^\s{2}([a-z_]+):\s*\[(.*?)^\s{2}\],/gms;
+const blocks=[]; let m;
+while((m=classBlockRe.exec(cf))) blocks.push({cls:m[1],body:m[2]});
+const mapped=new Set([...ff.matchAll(/^\s{2}([a-z0-9_]+):\s*\{/gm)].map(x=>x[1]));
+const rows=[];
+for(const b of blocks){
+  const ids=[...b.body.matchAll(/id:\s*'([^']+)'/g)].map(x=>x[1]);
+  const uniq=[...new Set(ids)];
+  const missing=uniq.filter(id=>mapped.has(id)===false).sort();
+  rows.push({cls:b.cls,total:uniq.length,missingCount:missing.length,missing});
+}
+const lines=[];
+lines.push('# Traits sem implementação direta em featureEffects');
+lines.push('');
+lines.push('Gerado automaticamente comparando IDs de classFeatures com chaves de featureEffects.');
+lines.push('');
+lines.push('| Classe | IDs totais | Sem mapeamento direto |');
+lines.push('|---|---:|---:|');
+rows.forEach(r=>lines.push(`| ${r.cls} | ${r.total} | ${r.missingCount} |`));
+lines.push('');
+for(const r of rows){
+  lines.push(`## ${r.cls}`);
+  lines.push('');
+  r.missing.forEach(id=>lines.push(`- \`${id}\``));
+  lines.push('');
+}
+fs.writeFileSync('docs/traits-nao-implementados.md', lines.join('\n'));
+NODE
+```
 
 ---
 

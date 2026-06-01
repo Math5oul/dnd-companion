@@ -96,6 +96,8 @@ export interface CharacterDraft {
   className: string;
   level: number;
   abilityScores: AbilityScores;
+  /** Perícias escolhidas na criação (passo de classe) */
+  skillProficiencies?: string[];
   /** Itens iniciais editáveis na tela de revisão */
   equipment?: import('./equipment').Equipment[];
 }

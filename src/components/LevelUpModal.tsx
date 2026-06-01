@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { getFeaturesForLevel, getOptionNameMapForClass, ClassFeature } from '../data/classFeatures';
+import { getFeaturesForLevel, getOptionNameMapForClass, CLASS_FEATURES, ClassFeature } from '../data/classFeatures';
+import { SKILLS, CLASS_SKILL_OPTIONS } from '../data/skills';
 import { useI18n } from '../lib/i18n';
 import { localizeFeatureName, localizeFeatureDesc } from '../lib/translations';
 
@@ -17,8 +18,10 @@ interface Props {
   classId: string;
   currentLevel: number;
   existingTraits?: string[];
+  existingSkillChoices?: Record<string, string[]>;
+  skillProficiencies?: string[];
   onCancel: () => void;
-  onConfirm: (selectedTraits: string[]) => void;
+  onConfirm: (selectedTraits: string[], selectedSkillChoices: Record<string, string[]>) => void;
 }
 
 export default function LevelUpModal({
@@ -27,6 +30,8 @@ export default function LevelUpModal({
   classId,
   currentLevel,
   existingTraits = [],
+  existingSkillChoices = {},
+  skillProficiencies = [],
   onCancel,
   onConfirm,
 }: Props) {
@@ -36,11 +41,49 @@ export default function LevelUpModal({
 
   // choices: featureId -> selectedOptionId
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [skillChoices, setSkillChoices] = useState<Record<string, string[]>>({});
 
-  const choiceFeatures = features.filter((f) => f.type === 'choice');
-  const autoFeatures = features.filter((f) => f.type === 'auto');
+  const choiceFeatures = useMemo(() => features.filter((f) => f.type === 'choice'), [features]);
+  const autoFeatures = useMemo(() => features.filter((f) => f.type === 'auto'), [features]);
+  const classFeatureList = useMemo(
+    () => (CLASS_FEATURES[classId] ?? []).flatMap((lf) => lf.features),
+    [classId],
+  );
+  const pendingSkillPickFeatures = useMemo(() => {
+    const existingSet = new Set(existingTraits);
+    const currentAutoIds = new Set(autoFeatures.map((f) => f.id));
+    return classFeatureList.filter((f) => {
+      if (f.type !== 'auto') return false;
+      if (!(f.pickCount && f.pickCount > 0)) return false;
+      if (!existingSet.has(f.id)) return false;
+      if (currentAutoIds.has(f.id)) return false;
+      const alreadyChosen = existingSkillChoices[f.id]?.length ?? 0;
+      return alreadyChosen < (f.pickCount ?? 1);
+    });
+  }, [classFeatureList, existingTraits, autoFeatures, existingSkillChoices]);
+  const skillPickFeatures = useMemo(
+    () => {
+      const fromCurrentLevel = autoFeatures.filter((f) => f.pickCount && f.pickCount > 0);
+      const byId = new Map<string, ClassFeature>();
+      fromCurrentLevel.forEach((f) => byId.set(f.id, f));
+      pendingSkillPickFeatures.forEach((f) => byId.set(f.id, f));
+      return [...byId.values()];
+    },
+    [autoFeatures, pendingSkillPickFeatures],
+  );
 
-  const allChoicesMade = choiceFeatures.every((f) => choices[f.id]);
+  const allChoicesMade = choiceFeatures.every((f) => choices[f.id]) && skillPickFeatures.every((f) => (skillChoices[f.id]?.length ?? 0) >= (f.pickCount ?? 1));
+
+  useEffect(() => {
+    if (!visible) return;
+    setChoices({});
+    const initialSkillChoices: Record<string, string[]> = {};
+    for (const f of skillPickFeatures) {
+      const existing = existingSkillChoices[f.id];
+      if (existing?.length) initialSkillChoices[f.id] = [...existing];
+    }
+    setSkillChoices(initialSkillChoices);
+  }, [visible, currentLevel, classId, existingSkillChoices, skillPickFeatures]);
 
   // Names of options the character has already chosen in previous level-ups
   const previouslyChosenNames = useMemo(() => {
@@ -70,6 +113,21 @@ export default function LevelUpModal({
     return result;
   }, [choices, choiceFeatures, previouslyChosenNames]);
 
+  const takenSkillsByFeatureId = useMemo(() => {
+    const result: Record<string, Set<string>> = {};
+    skillPickFeatures.forEach((f) => {
+      const taken = new Set<string>();
+      skillPickFeatures.forEach((other) => {
+        if (other.id !== f.id) {
+          const chosen = skillChoices[other.id] ?? [];
+          chosen.forEach((sid) => taken.add(sid));
+        }
+      });
+      result[f.id] = taken;
+    });
+    return result;
+  }, [skillChoices, skillPickFeatures]);
+
   const handleConfirm = () => {
     // Collect all trait IDs: auto features + chosen options
     const traitIds: string[] = [];
@@ -78,7 +136,7 @@ export default function LevelUpModal({
       if (choices[f.id]) traitIds.push(choices[f.id]);
     });
     setChoices({});
-    onConfirm(traitIds);
+    onConfirm(traitIds, skillChoices);
   };
 
   const handleCancel = () => {
@@ -150,6 +208,90 @@ export default function LevelUpModal({
                 })}
               </View>
             ))}
+
+            {/* Auto features with skill picks */}
+            {skillPickFeatures.map((f) => {
+              const selectedSkills = skillChoices[f.id] ?? [];
+              const pickCount = f.pickCount ?? 1;
+              const availableSkills = f.pickType === 'expertise'
+                ? (skillProficiencies.length > 0
+                  ? skillProficiencies
+                  : ((CLASS_SKILL_OPTIONS[classId] ?? []).length > 0
+                    ? (CLASS_SKILL_OPTIONS[classId] ?? [])
+                    : SKILLS.map((s) => s.id)))
+                : (f.pickSkills && f.pickSkills.length > 0
+                  ? f.pickSkills
+                  : ((CLASS_SKILL_OPTIONS[classId] ?? []).length > 0
+                    ? (CLASS_SKILL_OPTIONS[classId] ?? [])
+                    : SKILLS.map((s) => s.id)));
+              return (
+                <View key={f.id} style={styles.section}>
+                  <Text style={styles.sectionTitle}>🧠 {localizeFeatureName(f.id, f.name, language)}</Text>
+                  <Text style={styles.choiceDesc}>{localizeFeatureDesc(f.id, f.description, language)}</Text>
+                  <Text style={styles.skillHint}>
+                    {f.pickType === 'expertise'
+                      ? (language === 'en'
+                        ? `Choose ${pickCount} skill${pickCount > 1 ? 's' : ''} to gain expertise.`
+                        : `Escolha ${pickCount} habilidade${pickCount > 1 ? 's' : ''} para ganhar expertise.`)
+                      : (language === 'en'
+                        ? `Choose ${pickCount} skill${pickCount > 1 ? 's' : ''}.`
+                        : `Escolha ${pickCount} habilidade${pickCount > 1 ? 's' : ''}.`) }
+                  </Text>
+                  {availableSkills.length === 0 && (
+                    <Text style={styles.skillEmpty}>
+                      {language === 'en'
+                        ? 'No skills available for this choice.'
+                        : 'Nenhuma perícia disponível para esta escolha.'}
+                    </Text>
+                  )}
+                  {availableSkills.map((sid) => {
+                    const sk = SKILLS.find((s) => s.id === sid);
+                    if (!sk) return null;
+                    const selected = selectedSkills.includes(sid);
+                    const takenByOther = !selected && (takenSkillsByFeatureId[f.id]?.has(sid) ?? false);
+                    const atLimit = selectedSkills.length >= pickCount;
+                    return (
+                      <TouchableOpacity
+                        key={sid}
+                        style={[
+                          styles.optionCard,
+                          selected && styles.optionCardSelected,
+                          takenByOther && styles.optionCardDisabled,
+                        ]}
+                        onPress={takenByOther ? undefined : () => {
+                          setSkillChoices((prev) => {
+                            const current = prev[f.id] ?? [];
+                            let next: string[];
+                            if (selected) {
+                              next = current.filter((x) => x !== sid);
+                            } else if (atLimit) {
+                              return prev;
+                            } else {
+                              next = [...current, sid];
+                            }
+                            return { ...prev, [f.id]: next };
+                          });
+                        }}
+                        activeOpacity={takenByOther ? 1 : 0.75}
+                      >
+                        <View style={styles.optionHeader}>
+                          <View style={[styles.radio, selected && styles.radioSelected]}>
+                            {selected && <View style={styles.radioDot} />}
+                          </View>
+                          <Text style={[
+                            styles.optionName,
+                            selected && styles.optionNameSelected,
+                            takenByOther && styles.optionNameDisabled,
+                          ]}>
+                            {language === 'en' ? sk.nameEn : sk.name}{takenByOther ? ' ✗' : ''}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })}
 
             {!hasFeatures && (
               <View style={styles.section}>
@@ -272,6 +414,16 @@ const styles = StyleSheet.create({
   },
   choiceDesc: {
     color: '#9090b0',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  skillHint: {
+    color: '#a0a0c0',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  skillEmpty: {
+    color: '#606080',
     fontSize: 12,
     marginBottom: 8,
   },
