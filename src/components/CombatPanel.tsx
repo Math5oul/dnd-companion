@@ -227,6 +227,7 @@ export default function CombatPanel({
 
     const costInfo = ACTION_COST_LABEL[action.actionCost];
     const srcColor = isEffectActive ? '#44ff66' : SOURCE_COLOR[action.source];
+    const isThrownAttack = action.tags.includes('thrown');
 
     return (
       <View key={action.id} style={[s.card(c), exhausted && { opacity: 0.5 }, isEffectActive && { borderColor: '#44ff6688', borderWidth: 2 }]}>
@@ -259,6 +260,11 @@ export default function CombatPanel({
                   {language === 'en' ? action.sourceNameEn : action.sourceNamePt}
                 </Text>
               </View>
+              {isThrownAttack && (
+                <View style={s.thrownBadge(c)}>
+                  <Text style={s.thrownText(c)}>🏹 {language === 'en' ? 'Thrown' : 'Arremesso'}</Text>
+                </View>
+              )}
             </View>
             {/* Stats row */}
             {(action.attackBonus !== undefined || action.damage) && (
@@ -437,6 +443,16 @@ const s = {
   } as const,
 
   sourceText: { fontSize: 10, fontWeight: '600' as const },
+
+  thrownBadge: (c: TC) => ({
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: c.accent + '88',
+    backgroundColor: c.accent + '22',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  } as const),
+  thrownText: (c: TC) => ({ color: c.accent, fontSize: 10, fontWeight: '700' as const }),
 
   pips: { flexDirection: 'row' as const, gap: 3, alignSelf: 'center' as const },
   chargeBlock: { alignSelf: 'center' as const, alignItems: 'center' as const, gap: 3 },

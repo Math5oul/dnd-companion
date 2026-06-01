@@ -7,6 +7,11 @@ import { getRaceById } from '../data/races';
 import { getAutoTraitIdsUpToLevel } from '../data/classFeatures';
 import { getGrantedSpellsForTraits } from '../data/featureEffects';
 import { calculateStartingHp, rollDamage } from '../lib/dice';
+import { buildMapContractBundle } from '../lib/mapContract';
+import type { MapContractBundle } from '../types/mapContract';
+import { useTurnStore } from './turnStore';
+
+const MAX_CHARACTER_LEVEL = 20;
 
 const EMPTY_DRAFT: CharacterDraft = {
   name: '',
@@ -74,6 +79,28 @@ function mergeAutoAsiChoices(
     }
   }
   return merged;
+}
+
+function buildSkillSet(char: Character): Set<string> {
+  const skillSet = new Set<string>(char.skillProficiencies ?? []);
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill') skillSet.add(p.id);
+  });
+  return skillSet;
+}
+
+function rebuildTypedSkillProficiencies(
+  current: Proficiency[] | undefined,
+  skillIds: Set<string>,
+  expertSkillIds: Set<string>,
+): Proficiency[] {
+  const nonSkill = (current ?? []).filter((p) => p.category !== 'skill');
+  const skillEntries = [...skillIds].sort().map((id) => ({
+    category: 'skill' as const,
+    id,
+    level: expertSkillIds.has(id) ? 'expert' as const : 'proficient' as const,
+  }));
+  return [...nonSkill, ...skillEntries];
 }
 
 interface CharacterStore {
@@ -173,6 +200,10 @@ interface CharacterStore {
   deleteCharacter: (id: string) => Promise<void>;
   /** Importa um personagem a partir de dados JSON exportados */
   importCharacter: (data: Omit<Character, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Character | null>;
+  /** Gera snapshot de contrato para integração com mapa de um personagem específico */
+  getMapContractBundle: (characterId: string) => MapContractBundle | null;
+  /** Gera snapshot de contrato para o personagem ativo no turno atual */
+  getActiveMapContractBundle: () => MapContractBundle | null;
 }
 
 export const useCharacterStore = create<CharacterStore>((set, get) => ({
@@ -185,7 +216,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   setDraftName: (name) => set((s) => ({ draft: { ...s.draft, name } })),
   setDraftRace: (race) => set((s) => ({ draft: { ...s.draft, race } })),
   setDraftClass: (className) => set((s) => ({ draft: { ...s.draft, className } })),
-  setDraftLevel: (level) => set((s) => ({ draft: { ...s.draft, level } })),
+  setDraftLevel: (level) => set((s) => ({ draft: { ...s.draft, level: Math.max(1, Math.min(MAX_CHARACTER_LEVEL, level)) } })),
   setDraftSkillProficiencies: (skillIds) => set((s) => ({ draft: { ...s.draft, skillProficiencies: skillIds } })),
   setDraftEquipment: (equipment) => set((s) => ({ draft: { ...s.draft, equipment } })),
 
@@ -403,6 +434,7 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   levelUp: async (characterId, newTraits) => {
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
+    if (char.level >= MAX_CHARACTER_LEVEL) return;
     const newLevel = char.level + 1;
     const cls = getClassById(char.className);
 
@@ -627,14 +659,28 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   toggleSkillProficiency: async (characterId, skillId) => {
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
-    const current = char.skillProficiencies ?? [];
-    const updated = current.includes(skillId)
-      ? current.filter((s) => s !== skillId)
-      : [...current, skillId];
-    await supabase.from('characters').update({ skillProficiencies: updated }).eq('id', characterId);
+    const skillSet = buildSkillSet(char);
+    const isEnabled = skillSet.has(skillId);
+    if (isEnabled) skillSet.delete(skillId);
+    else skillSet.add(skillId);
+
+    const existingExperts = new Set<string>(
+      (char.proficiencies ?? [])
+        .filter((p) => p.category === 'skill' && p.level === 'expert')
+        .map((p) => p.id),
+    );
+    if (!skillSet.has(skillId)) existingExperts.delete(skillId);
+
+    const updatedSkills = [...skillSet];
+    const updatedTyped = rebuildTypedSkillProficiencies(char.proficiencies, skillSet, existingExperts);
+
+    await supabase
+      .from('characters')
+      .update({ skillProficiencies: updatedSkills, proficiencies: updatedTyped })
+      .eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
-        c.id === characterId ? { ...c, skillProficiencies: updated } : c
+        c.id === characterId ? { ...c, skillProficiencies: updatedSkills, proficiencies: updatedTyped } : c
       ),
     }));
   },
@@ -642,13 +688,26 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   addSkillProficiency: async (characterId, skillId) => {
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
-    const current = char.skillProficiencies ?? [];
-    if (current.includes(skillId)) return; // já tem, não faz nada
-    const updated = [...current, skillId];
-    await supabase.from('characters').update({ skillProficiencies: updated }).eq('id', characterId);
+    const skillSet = buildSkillSet(char);
+    if (skillSet.has(skillId)) return;
+    skillSet.add(skillId);
+
+    const existingExperts = new Set<string>(
+      (char.proficiencies ?? [])
+        .filter((p) => p.category === 'skill' && p.level === 'expert')
+        .map((p) => p.id),
+    );
+
+    const updatedSkills = [...skillSet];
+    const updatedTyped = rebuildTypedSkillProficiencies(char.proficiencies, skillSet, existingExperts);
+
+    await supabase
+      .from('characters')
+      .update({ skillProficiencies: updatedSkills, proficiencies: updatedTyped })
+      .eq('id', characterId);
     set((s) => ({
       characters: s.characters.map((c) =>
-        c.id === characterId ? { ...c, skillProficiencies: updated } : c
+        c.id === characterId ? { ...c, skillProficiencies: updatedSkills, proficiencies: updatedTyped } : c
       ),
     }));
   },
@@ -935,32 +994,60 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     const char = get().characters.find((c) => c.id === characterId);
     if (!char) return;
     const updatedChoices = { ...(char.featureChoices ?? {}), [featureId]: skillIds };
-    // Also apply proficiency for proficiency-type picks
+
+    // Also apply proficiency/expertise updates for skill picks
     const { CLASS_FEATURES } = await import('../data/classFeatures');
     const allFeatures = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features);
     const feature = allFeatures.find((f) => f.id === featureId);
-    let updatedProfs = [...(char.skillProficiencies ?? [])];
+    const skillSet = buildSkillSet(char);
+
     if (feature?.pickType === 'proficiency') {
       // Remove old choices for this feature, then add new ones
       const old = char.featureChoices?.[featureId] ?? [];
-      updatedProfs = updatedProfs.filter((s) => !old.includes(s));
+      old.forEach((sid) => skillSet.delete(sid));
       for (const sid of skillIds) {
-        if (!updatedProfs.includes(sid)) updatedProfs.push(sid);
+        skillSet.add(sid);
       }
     }
+
+    const expertiseFeatureIds = new Set(
+      allFeatures.filter((f) => f.pickType === 'expertise').map((f) => f.id),
+    );
+    const prevExpertiseSkills = new Set<string>();
+    const nextExpertiseSkills = new Set<string>();
+    expertiseFeatureIds.forEach((fid) => {
+      (char.featureChoices?.[fid] ?? []).forEach((sid) => prevExpertiseSkills.add(sid));
+      (updatedChoices[fid] ?? []).forEach((sid) => nextExpertiseSkills.add(sid));
+    });
+    const existingExperts = new Set<string>(
+      (char.proficiencies ?? [])
+        .filter((p) => p.category === 'skill' && p.level === 'expert')
+        .map((p) => p.id),
+    );
+    prevExpertiseSkills.forEach((sid) => existingExperts.delete(sid));
+    nextExpertiseSkills.forEach((sid) => {
+      existingExperts.add(sid);
+      skillSet.add(sid);
+    });
+
+    const updatedSkills = [...skillSet];
+    const updatedTyped = rebuildTypedSkillProficiencies(char.proficiencies, skillSet, existingExperts);
+
     // Update local state immediately
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId
-          ? { ...c, featureChoices: updatedChoices, skillProficiencies: updatedProfs }
+          ? { ...c, featureChoices: updatedChoices, skillProficiencies: updatedSkills, proficiencies: updatedTyped }
           : c
       ),
     }));
-    // Persist to Supabase — featureChoices and skillProficiencies separately for resilience
+
+    // Persist to Supabase — feature choices and proficiencies separately for resilience
     const { error: e1 } = await supabase.from('characters').update({
-      skillProficiencies: updatedProfs,
+      skillProficiencies: updatedSkills,
+      proficiencies: updatedTyped,
     }).eq('id', characterId);
-    if (e1) console.warn('[saveFeatureChoice] skillProficiencies error:', e1.message);
+    if (e1) console.warn('[saveFeatureChoice] skill/proficiencies error:', e1.message);
     const { error: e2 } = await supabase.from('characters').update({
       featureChoices: updatedChoices,
     }).eq('id', characterId);
@@ -1046,5 +1133,22 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     }));
     const { error } = await supabase.from('characters').update({ proficiencies: updated }).eq('id', characterId);
     if (error) console.warn('[addProficiency] Supabase error (run migration):', error.message);
+  },
+
+  getMapContractBundle: (characterId) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return null;
+    const turn = useTurnStore.getState().turns[characterId] ?? null;
+    return buildMapContractBundle(char, turn);
+  },
+
+  getActiveMapContractBundle: () => {
+    const turnState = useTurnStore.getState();
+    const activeId = turnState.session?.activeCharacterId;
+    if (!activeId) return null;
+    const char = get().characters.find((c) => c.id === activeId);
+    if (!char) return null;
+    const turn = turnState.turns[activeId] ?? null;
+    return buildMapContractBundle(char, turn);
   },
 }));

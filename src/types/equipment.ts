@@ -16,6 +16,8 @@ export interface EquipmentAttack {
   damage: string;       // dice string e.g. "1d8+3"
   damageType: string;   // e.g. "slashing"
   range: string;        // e.g. "5 ft" or "60/120 ft"
+  /** Marks this attack as a thrown attack for combat modifiers/UI. */
+  isThrown?: boolean;
 }
 
 export interface Equipment {

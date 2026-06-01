@@ -11,7 +11,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCharacterStore } from '../../src/store/characterStore';
@@ -21,6 +21,7 @@ import { useI18n, translateRaceName, translateClassName } from '../../src/lib/i1
 import { convertRange, convertDuration, convertCastingTime, convertSchool, convertTextDistances, translateDamageType, translateEquipRange, convertSpeed } from '../../src/lib/units';
 import { localizeSpellName, localizeFeatureName, localizeFeatureDesc } from '../../src/lib/translations';
 import { computeCharacterStats } from '../../src/lib/characterStats';import { formatModifier, rollDamage } from '../../src/lib/dice';
+import { detectPendingChoices } from '../../src/lib/pendingChoices';
 import { getRaceById } from '../../src/data/races';
 import { getClassById } from '../../src/data/classes';
 import { getSpellById, getSpellDamage, getSpellDamageAtSlot, SCHOOL_ICON, SCHOOL_COLOR } from '../../src/data/spells';
@@ -34,7 +35,6 @@ import { getFeaturesForLevel, CLASS_FEATURES, computeAsiTotals } from '../../src
 import { getActiveFeatureActions } from '../../src/data/featureEffects';
 import CombatPanel from '../../src/components/CombatPanel';
 import TurnTracker from '../../src/components/TurnTracker';
-import ChecksPanel from '../../src/components/ChecksPanel';
 import SkillsChecksPanel from '../../src/components/SkillsChecksPanel';
 import SpellsPanel from '../../src/components/SpellsPanel';
 import { detectMetamagic, spellAttackBonus as calcSpellAttackBonus, spellSaveDC as calcSpellSaveDC, applyMetamagicToDamage, metamagicCost, getSpellTraitBonuses, traitBonusesForSpell, computeSpellRange } from '../../src/lib/metamagic';
@@ -49,6 +49,8 @@ const ABILITY_KEYS: { key: AbilityName; icon: string }[] = [
   { key: 'wisdom', icon: '🔮' },
   { key: 'charisma', icon: '✨' },
 ];
+
+const MAX_CHARACTER_LEVEL = 20;
 
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -185,6 +187,11 @@ export default function CharacterSheet() {
   // CA calculada por categoria de armadura (D&D 5e rules)
   const displayAC = useMemo(() => {
     if (!char) return 10;
+    const hasDefenseStyle = (char.traits ?? []).some((tid) =>
+      tid === 'fighter_style_defense'
+      || tid === 'paladin_style_defense'
+      || tid === 'ranger_style_defense'
+    );
     const dexTotal = (char.abilityScores.dexterity) + (asiTotals.dexterity ?? 0) + (equipBonuses.dexterity ?? 0);
     const dexMod = Math.floor((dexTotal - 10) / 2);
     // Base armor (must have armorCategory set to use the new formula)
@@ -211,9 +218,10 @@ export default function CharacterSheet() {
         (char.activeEffects ?? [])
           .reduce((sum, ef) => sum + ef.bonuses.filter((b) => b.type === 'ac').reduce((s, b) => s + b.value, 0), 0);
       ac += flatBonus;
+      if (hasDefenseStyle) ac += 1;
     }
     return ac;
-  }, [char?.equipment, char?.abilityScores, char?.activeEffects, asiTotals, equipBonuses]);
+  }, [char?.equipment, char?.abilityScores, char?.activeEffects, char?.traits, asiTotals, equipBonuses]);
 
   // Status efetivos: velocidade e resistências calculadas de features + raça
   const effectiveStats = useMemo(
@@ -230,6 +238,50 @@ export default function CharacterSheet() {
   }, [char?.skillProficiencies, char?.proficiencies]);
 
   const sheetSkillPool = levelUpSkillPool;
+
+  const sheetPendingItems = useMemo(() => {
+    if (!char) return [] as Array<{ id: string; label: string; category: 'levelup' | 'traits' | 'skills' }>;
+    const pending = detectPendingChoices({
+      className: char.className,
+      level: char.level,
+      traits: char.traits ?? [],
+      featureChoices: char.featureChoices ?? {},
+      asiChoices: char.asiChoices,
+    });
+
+    return pending.map((item) => {
+      const featureName = localizeFeatureName(item.feature.id, item.feature.name, language);
+      if (item.kind === 'choice') {
+        return {
+          id: item.id,
+          label: language === 'en'
+            ? `${featureName}: choose one option`
+            : `${featureName}: escolha uma opção`,
+          category: item.category,
+        };
+      }
+      if (item.kind === 'asi') {
+        return {
+          id: item.id,
+          label: language === 'en'
+            ? `${featureName}: assign ${item.missing} ASI point${item.missing > 1 ? 's' : ''}`
+            : `${featureName}: distribua ${item.missing} ponto${item.missing > 1 ? 's' : ''} de ASI`,
+          category: item.category,
+        };
+      }
+      return {
+        id: item.id,
+        label: language === 'en'
+          ? `${featureName}: pick ${item.missing} skill${item.missing > 1 ? 's' : ''}`
+          : `${featureName}: escolha ${item.missing} perícia${item.missing > 1 ? 's' : ''}`,
+        category: item.category,
+      };
+    });
+  }, [char, language]);
+
+  const hasLevelUpPending = sheetPendingItems.some((p) => p.category === 'levelup');
+  const hasTraitsPending = sheetPendingItems.some((p) => p.category === 'traits');
+  const hasSkillsPending = sheetPendingItems.some((p) => p.category === 'skills');
 
   if (loading || (!char && characters.length === 0)) {
     return (
@@ -252,6 +304,7 @@ export default function CharacterSheet() {
 
   const race = getRaceById(char.race);
   const cls = getClassById(char.className);
+  const hasReachedMaxLevel = char.level >= MAX_CHARACTER_LEVEL;
   const raceName = translateRaceName(char.race, race?.name ?? char.race, language);
   const className = translateClassName(char.className, cls?.name ?? char.className, language);
 
@@ -260,7 +313,44 @@ export default function CharacterSheet() {
     updateHp(char.id, newHp);
   };
 
-  const handleLevelUp = () => setModal('levelup');
+  const handleLevelUp = () => {
+    if (hasReachedMaxLevel) {
+      Alert.alert(
+        language === 'en' ? 'Maximum level reached' : 'Nível máximo atingido',
+        language === 'en'
+          ? `This character is already at level ${MAX_CHARACTER_LEVEL}.`
+          : `Este personagem já está no nível ${MAX_CHARACTER_LEVEL}.`,
+      );
+      return;
+    }
+    if (!hasLevelUpPending) {
+      setModal('levelup');
+      return;
+    }
+    Alert.alert(
+      language === 'en' ? 'Pending level choices' : 'Escolhas de nível pendentes',
+      language === 'en'
+        ? 'You still have unresolved level choices in this character sheet. Resolve them first, or continue anyway.'
+        : 'Ainda existem escolhas de nível não resolvidas na ficha. Resolva primeiro, ou continue assim mesmo.',
+      [
+        {
+          text: language === 'en' ? 'Resolve now' : 'Resolver agora',
+          onPress: () => {
+            setTraitsOpen(true);
+            setSkillsOpen(true);
+          },
+        },
+        {
+          text: language === 'en' ? 'Continue anyway' : 'Continuar mesmo assim',
+          onPress: () => setModal('levelup'),
+        },
+        {
+          text: language === 'en' ? 'Cancel' : 'Cancelar',
+          style: 'cancel',
+        },
+      ],
+    );
+  };
   const handleDelete = () => setModal('delete');
   const handleLongRestConfirm = () => setModal('longrest');
 
@@ -1014,6 +1104,62 @@ export default function CharacterSheet() {
         );
       })()}
 
+      {sheetPendingItems.length > 0 && (
+        <View style={styles.pendingCard}>
+          <Text style={styles.pendingTitle}>
+            {language === 'en' ? '⚠️ Pending Character Choices' : '⚠️ Escolhas Pendentes da Ficha'} ({sheetPendingItems.length})
+          </Text>
+          {sheetPendingItems.slice(0, 6).map((item) => (
+            <Text key={item.id} style={styles.pendingItem}>
+              {item.category === 'levelup' ? '⬆️ ' : item.category === 'traits' ? '✨ ' : '🎲 '}• {item.label}
+            </Text>
+          ))}
+          {sheetPendingItems.length > 6 && (
+            <Text style={styles.pendingHint}>
+              {language === 'en'
+                ? `+ ${sheetPendingItems.length - 6} more pending items`
+                : `+ ${sheetPendingItems.length - 6} pendências adicionais`}
+            </Text>
+          )}
+          <View style={styles.pendingActionsRow}>
+            {hasLevelUpPending && (
+              <TouchableOpacity style={styles.pendingOpenBtn} onPress={() => setModal('levelup')}>
+                <Text style={styles.pendingOpenBtnText}>
+                  {language === 'en' ? 'Open Level Up' : 'Abrir Level Up'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {hasTraitsPending && (
+              <TouchableOpacity style={styles.pendingOpenBtn} onPress={() => setTraitsOpen(true)}>
+                <Text style={styles.pendingOpenBtnText}>
+                  {language === 'en' ? 'Open Traits' : 'Abrir Traits'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {hasSkillsPending && (
+              <TouchableOpacity style={styles.pendingOpenBtn} onPress={() => setSkillsOpen(true)}>
+                <Text style={styles.pendingOpenBtnText}>
+                  {language === 'en' ? 'Open Skills' : 'Abrir Perícias'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
+      {sheetPendingItems.length === 0 && (
+        <View style={styles.readyCard}>
+          <Text style={styles.readyTitle}>
+            {language === 'en' ? '✅ Character Sheet Ready' : '✅ Ficha Pronta'}
+          </Text>
+          <Text style={styles.readyText}>
+            {language === 'en'
+              ? 'All tracked class choices and skill picks are complete for this level.'
+              : 'Todas as escolhas de classe e perícias rastreadas estão completas para este nível.'}
+          </Text>
+        </View>
+      )}
+
       {/* Ações */}
       <Text style={styles.sectionTitle}>{t.actions}</Text>
       {cls?.spellcaster && (
@@ -1037,8 +1183,25 @@ export default function CharacterSheet() {
         <Text style={styles.actionBtnSub}>{t.shortRestSub}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.levelUpBtn} onPress={handleLevelUp}>
-        <Text style={styles.levelUpBtnText}>{t.levelUp(char.level, char.level + 1)}</Text>
+      <TouchableOpacity
+        style={[
+          styles.levelUpBtn,
+          hasLevelUpPending && styles.levelUpBtnWarn,
+          hasReachedMaxLevel && styles.levelUpBtnDisabled,
+        ]}
+        onPress={hasReachedMaxLevel ? undefined : handleLevelUp}
+        activeOpacity={hasReachedMaxLevel ? 1 : 0.8}
+      >
+        <Text style={[styles.levelUpBtnText, hasReachedMaxLevel && styles.levelUpBtnTextDisabled]}>
+          {hasReachedMaxLevel
+            ? (language === 'en' ? `Max level reached (${MAX_CHARACTER_LEVEL})` : `Nível máximo atingido (${MAX_CHARACTER_LEVEL})`)
+            : t.levelUp(char.level, char.level + 1)}
+        </Text>
+        {hasLevelUpPending && !hasReachedMaxLevel && (
+          <Text style={styles.levelUpWarnText}>
+            {language === 'en' ? 'Pending level choices detected' : 'Há escolhas de nível pendentes'}
+          </Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
@@ -1061,7 +1224,7 @@ export default function CharacterSheet() {
         }}
       />
       <LevelUpModal
-        visible={modal === 'levelup'}
+        visible={modal === 'levelup' && !hasReachedMaxLevel}
         characterName={char.name}
         classId={char.className}
         currentLevel={char.level}
@@ -1070,6 +1233,36 @@ export default function CharacterSheet() {
         skillProficiencies={levelUpSkillPool}
         onCancel={() => setModal(null)}
         onConfirm={async (selectedTraits, selectedSkillChoices) => {
+          if (char.level >= MAX_CHARACTER_LEVEL) {
+            setModal(null);
+            return;
+          }
+          const mergedTraits = Array.from(new Set([...(char.traits ?? []), ...selectedTraits]));
+          const mergedFeatureChoices = {
+            ...(char.featureChoices ?? {}),
+            ...selectedSkillChoices,
+          };
+          const criticalPending = detectPendingChoices(
+            {
+              className: char.className,
+              level: char.level + 1,
+              traits: mergedTraits,
+              featureChoices: mergedFeatureChoices,
+              asiChoices: char.asiChoices,
+            },
+            char.level + 1,
+          ).filter((issue) => issue.kind === 'choice' || issue.kind === 'skill_pick');
+
+          if (criticalPending.length > 0) {
+            Alert.alert(
+              language === 'en' ? 'Unresolved required choices' : 'Escolhas obrigatórias pendentes',
+              language === 'en'
+                ? 'Complete all required class choices and skill picks before confirming level up.'
+                : 'Complete todas as escolhas obrigatórias de classe e perícias antes de confirmar o level up.',
+            );
+            return;
+          }
+
           setModal(null);
           await levelUp(char.id, selectedTraits);
           for (const [featureId, skillIds] of Object.entries(selectedSkillChoices)) {
@@ -1631,7 +1824,22 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     marginBottom: 10,
     alignItems: 'center',
   },
+  levelUpBtnWarn: {
+    borderColor: '#f0a50099',
+    backgroundColor: '#f0a50011',
+  },
+  levelUpBtnDisabled: {
+    borderColor: '#6a6a6a55',
+    backgroundColor: '#99999911',
+  },
   levelUpBtnText: { color: '#70e040', fontWeight: '700', fontSize: 15 },
+  levelUpBtnTextDisabled: { color: '#8e8e8e' },
+  levelUpWarnText: {
+    color: '#f0a500',
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: '700',
+  },
 
   // ── Drawer shared styles ───────────────────────────────────────────────────
   drawerHeader: {
@@ -2326,5 +2534,72 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     color: c.bg,
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  pendingCard: {
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#f0a50066',
+    marginBottom: 14,
+    gap: 6,
+  },
+  pendingTitle: {
+    color: '#f0a500',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  pendingItem: {
+    color: c.text,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  pendingHint: {
+    color: c.subtext,
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+  pendingOpenBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    backgroundColor: '#f0a50022',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f0a50066',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pendingOpenBtnText: {
+    color: '#f0a500',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  pendingActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+
+  readyCard: {
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#50d08066',
+    marginBottom: 14,
+    gap: 4,
+  },
+  readyTitle: {
+    color: '#50d080',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  readyText: {
+    color: c.text,
+    fontSize: 12,
+    lineHeight: 17,
   },
 });

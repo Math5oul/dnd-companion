@@ -12,10 +12,19 @@ const DUELING_IDS = new Set([
   'fighter_style_dueling', 'paladin_style_dueling', 'ranger_style_dueling',
 ]);
 const TWF_IDS = new Set([
+  // Legacy aliases kept for backward compatibility with old saved traits.
   'fighter_style_twf', 'ranger_style_twf',
+  'fighter_style_two_weapon', 'ranger_style_two_weapon',
+]);
+const THROWN_WEAPON_IDS = new Set([
+  'ranger_style_thrown_weapon',
+  // Legacy/alt IDs kept for compatibility with translations and old saves.
+  'fighter_style_thrown_weapon', 'ftr_style_thrown_weapon',
 ]);
 const GWFS_IDS = new Set([
+  // Legacy aliases kept for backward compatibility with old saved traits.
   'fighter_style_gwf',
+  'fighter_style_great_weapon', 'paladin_style_great_weapon',
 ]);
 const IMPROVED_DIVINE_SMITE_IDS = new Set([
   'paladin_improved_divine_smite',
@@ -108,6 +117,18 @@ export function buildCombatActions(char: Character): CombatAction[] {
     });
   }
 
+  const hasThrownWeaponStyle = traits.some((t) => THROWN_WEAPON_IDS.has(t));
+  if (hasThrownWeaponStyle) {
+    modifiers.push({
+      id: 'thrown_weapon',
+      labelPt: 'Armas de Arremesso (+1 dano)',
+      labelEn: 'Thrown Weapon Fighting (+1 damage)',
+      damageBonus: 1,
+      conditionPt: 'Ataques com arma arremessada',
+      conditionEn: 'Thrown weapon attacks',
+    });
+  }
+
   const hasGWF = traits.some((t) => GWFS_IDS.has(t));
   if (hasGWF) {
     modifiers.push({
@@ -151,11 +172,20 @@ export function buildCombatActions(char: Character): CombatAction[] {
       if (m.id === 'archery') return tags.includes('ranged');
       if (m.id === 'dueling') return tags.includes('melee');
       if (m.id === 'twf') return tags.includes('melee');
+      if (m.id === 'thrown_weapon') return tags.includes('thrown');
       if (m.id === 'gwf') return tags.includes('melee');
       if (m.id === 'improved_divine_smite') return tags.includes('melee');
       if (m.id === 'sneak_attack') return tags.includes('melee') || tags.includes('ranged');
       return false;
     });
+  }
+
+  function isThrownAttack(item: { name: string; description?: string }, atk: { name: string; range?: string; isThrown?: boolean }): boolean {
+    if (typeof atk.isThrown === 'boolean') return atk.isThrown;
+    const text = `${item.name} ${item.description ?? ''} ${atk.name}`.toLowerCase();
+    if (/\b(thrown|arremess)/.test(text)) return true;
+    // Common shorthand in this app for melee-or-thrown attacks, e.g. "5 ft / 20-60 ft".
+    return /\b5\s*ft\s*\//.test((atk.range ?? '').toLowerCase());
   }
 
   // ─── Ataque desarmado básico ──────────────────────────────────
@@ -193,8 +223,9 @@ export function buildCombatActions(char: Character): CombatAction[] {
     const isConsumable = item.type === 'consumable';
     for (const atk of item.attacks) {
       const isRanged = atk.range ? atk.range.includes('/') || Number(atk.range) > 10 : false;
+      const thrown = isThrownAttack(item, atk);
       const tags: CombatAction['tags'] = isRanged
-        ? ['ranged', 'dex']
+        ? (thrown ? ['ranged', 'dex', 'thrown'] : ['ranged', 'dex'])
         : ['melee', 'str'];
 
       actions.push({

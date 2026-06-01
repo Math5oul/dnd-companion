@@ -153,6 +153,7 @@ export default function EquipmentModal({ visible, initial, onSave, onCancel }: P
         damage: a.dmgInput.trim() || '1d4',
         damageType: a.damageType,
         range: a.range,
+        ...(a.isThrown ? { isThrown: true } : {}),
       })),
     };
     onSave(item);
@@ -168,10 +169,10 @@ export default function EquipmentModal({ visible, initial, onSave, onCancel }: P
 
   const addAttack = () => setAttacks((a) => [...a, {
     id: genId(), name: '', attackBonus: 0, bonusInput: '+0',
-    damage: '1d6', dmgInput: '1d6', damageType: 'slashing', range: '5 ft',
+    damage: '1d6', dmgInput: '1d6', damageType: 'slashing', range: '5 ft', isThrown: false,
   }]);
   const removeAttack = (i: number) => setAttacks((a) => a.filter((_, idx) => idx !== i));
-  const setAttackField = (i: number, field: string, value: string) =>
+  const setAttackField = (i: number, field: string, value: string | boolean) =>
     setAttacks((a) => a.map((x, idx) => idx === i ? { ...x, [field]: value } : x));
 
   const applyTemplate = (entry: CatalogEntry) => {
@@ -621,6 +622,18 @@ export default function EquipmentModal({ visible, initial, onSave, onCancel }: P
                     })}
                   </View>
                 </ScrollView>
+                <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={[s.chip, a.isThrown && s.chipActive]}
+                    onPress={() => setAttackField(i, 'isThrown', !a.isThrown)}
+                  >
+                    <Text style={[s.chipText, a.isThrown && s.chipTextActive]}>
+                      {a.isThrown
+                        ? L('🏹 Arremesso: Sim', '🏹 Thrown: Yes')
+                        : L('🏹 Arremesso: Não', '🏹 Thrown: No')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
 

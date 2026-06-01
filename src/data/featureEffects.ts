@@ -565,6 +565,24 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       useType: 'at_will', activationCost: 'free',
     }],
   },
+  ranger_favored_enemy_2: {
+    actions: [{
+      id: 'favored_enemy_2',
+      namePt: 'Inimigo Favorito (2°)', nameEn: 'Favored Enemy (2nd)',
+      descPt: 'Passiva: adiciona um segundo tipo de inimigo favorito e idioma associado.',
+      descEn: 'Passive: adds a second favored enemy type and associated language.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_favored_enemy_3: {
+    actions: [{
+      id: 'favored_enemy_3',
+      namePt: 'Inimigo Favorito (3°)', nameEn: 'Favored Enemy (3rd)',
+      descPt: 'Passiva: adiciona um terceiro tipo de inimigo favorito e idioma associado.',
+      descEn: 'Passive: adds a third favored enemy type and associated language.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
   ranger_natural_explorer: {
     actions: [{
       id: 'natural_explorer',
@@ -574,6 +592,115 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       useType: 'at_will', activationCost: 'free',
     }],
   },
+  ranger_natural_explorer_2: {
+    actions: [{
+      id: 'natural_explorer_2',
+      namePt: 'Explorador Natural (2° terreno)', nameEn: 'Natural Explorer (2nd terrain)',
+      descPt: 'Passiva: adiciona um segundo terreno favorito para benefícios de exploração.',
+      descEn: 'Passive: adds a second favored terrain for exploration benefits.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_natural_explorer_3: {
+    actions: [{
+      id: 'natural_explorer_3',
+      namePt: 'Explorador Natural (3° terreno)', nameEn: 'Natural Explorer (3rd terrain)',
+      descPt: 'Passiva: adiciona um terceiro terreno favorito para benefícios de exploração.',
+      descEn: 'Passive: adds a third favored terrain for exploration benefits.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_fighting_style: {
+    actions: [{
+      id: 'ranger_fighting_style_passive',
+      namePt: 'Estilo de Combate (passivo)', nameEn: 'Fighting Style (passive)',
+      descPt: 'Passiva: marco de escolha de estilo de combate do patrulheiro.',
+      descEn: 'Passive: ranger fighting style selection milestone.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_spellcasting: {
+    actions: [{
+      id: 'ranger_spellcasting_passive',
+      namePt: 'Conjuração de Magias (passivo)', nameEn: 'Spellcasting (passive)',
+      descPt: 'Passiva: habilita conjuração de magias de patrulheiro baseada em Sabedoria.',
+      descEn: 'Passive: enables Wisdom-based ranger spellcasting.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_spells_3rd: {
+    actions: [{
+      id: 'ranger_spells_3rd_passive',
+      namePt: 'Magias de 3° Nível (passivo)', nameEn: '3rd-Level Spells (passive)',
+      descPt: 'Passiva: acesso a espaços de magia de 3° nível.',
+      descEn: 'Passive: access to 3rd-level spell slots.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_spells_4th: {
+    actions: [{
+      id: 'ranger_spells_4th_passive',
+      namePt: 'Magias de 4° Nível (passivo)', nameEn: '4th-Level Spells (passive)',
+      descPt: 'Passiva: acesso a espaços de magia de 4° nível.',
+      descEn: 'Passive: access to 4th-level spell slots.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_spells_5th: {
+    actions: [{
+      id: 'ranger_spells_5th_passive',
+      namePt: 'Magias de 5° Nível (passivo)', nameEn: '5th-Level Spells (passive)',
+      descPt: 'Passiva: acesso a espaços de magia de 5° nível.',
+      descEn: 'Passive: access to 5th-level spell slots.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_spells_bonus: {
+    actions: [{
+      id: 'ranger_spells_bonus_passive',
+      namePt: 'Magias Bônus de Patrulheiro (passivo)', nameEn: 'Ranger Bonus Spells (passive)',
+      descPt: 'Passiva: marca progressão de magias bônus concedidas por feature/subclasse.',
+      descEn: 'Passive: marks progression of bonus spells granted by features/subclass.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  // Ranger ASI markers/options are handled by derived rules and characterStore
+  // auto-ASI merge, but explicit keys keep static coverage complete.
+  ranger_asi_4: {},
+  ranger_asi_8: {},
+  ranger_asi_12: {},
+  ranger_asi_16: {},
+  ranger_asi_19: {},
+  ranger_asi4_dex2: {},
+  ranger_asi4_wis2: {},
+  ranger_asi4_dex1wis1: {},
+  ranger_asi4_feat_sharpshooter: {},
+  ranger_asi4_feat_crossbow: {},
+  ranger_asi4_feat_mobile: {},
+  ranger_asi8_dex2: {},
+  ranger_asi8_wis2: {},
+  ranger_asi8_dex1wis1: {},
+  ranger_asi8_feat_sharpshooter: {},
+  ranger_asi8_feat_alert: {},
+  ranger_asi8_feat_lucky: {},
+  ranger_asi12_dex2: {},
+  ranger_asi12_wis2: {},
+  ranger_asi12_dex1wis1: {},
+  ranger_asi12_feat_sharpshooter: {},
+  ranger_asi12_feat_resilient: {},
+  ranger_asi12_feat_tough: {},
+  ranger_asi16_dex2: {},
+  ranger_asi16_wis2: {},
+  ranger_asi16_dex1wis1: {},
+  ranger_asi16_feat_sharpshooter: {},
+  ranger_asi16_feat_alert: {},
+  ranger_asi16_feat_lucky: {},
+  ranger_asi19_dex2: {},
+  ranger_asi19_wis2: {},
+  ranger_asi19_dex1wis1: {},
+  ranger_asi19_feat_sharpshooter: {},
+  ranger_asi19_feat_alert: {},
+  ranger_asi19_feat_lucky: {},
   ranger_primeval_awareness: {
     actions: [{
       id: 'primeval_awareness',
@@ -589,6 +716,96 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
       namePt: 'Passada da Terra', nameEn: 'Lands Stride',
       descPt: 'Passiva: terreno difícil não mágico não custa movimento extra; atravessa vegetação não mágica sem redução.',
       descEn: 'Passive: nonmagical difficult terrain costs no extra movement; nonmagical plants do not slow you.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_archetype: {
+    actions: [{
+      id: 'ranger_archetype_passive',
+      namePt: 'Conclave de Patrulheiro (passivo)', nameEn: 'Ranger Conclave (passive)',
+      descPt: 'Passiva: define seu conclave e habilita as features especificas dos niveis 3, 7, 11 e 15.',
+      descEn: 'Passive: defines your conclave and enables subclass features at levels 3, 7, 11, and 15.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_conclave_feature_7: {
+    actions: [{
+      id: 'ranger_conclave_feature_7_passive',
+      namePt: 'Feature do Conclave (7) (passivo)', nameEn: 'Conclave Feature (7) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 7 do patrulheiro.',
+      descEn: 'Passive: ranger subclass milestone at level 7.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_conclave_feature_11: {
+    actions: [{
+      id: 'ranger_conclave_feature_11_passive',
+      namePt: 'Feature do Conclave (11) (passivo)', nameEn: 'Conclave Feature (11) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 11 do patrulheiro.',
+      descEn: 'Passive: ranger subclass milestone at level 11.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_conclave_feature_15: {
+    actions: [{
+      id: 'ranger_conclave_feature_15_passive',
+      namePt: 'Feature do Conclave (15) (passivo)', nameEn: 'Conclave Feature (15) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 15 do patrulheiro.',
+      descEn: 'Passive: ranger subclass milestone at level 15.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_archery: {
+    actions: [{
+      id: 'ranger_style_archery_passive',
+      namePt: 'Arqueirismo (passivo)', nameEn: 'Archery (passive)',
+      descPt: 'Passiva: +2 nas jogadas de ataque com armas a distancia.',
+      descEn: 'Passive: +2 bonus to attack rolls with ranged weapons.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_defense: {
+    actions: [{
+      id: 'ranger_style_defense_passive',
+      namePt: 'Defesa (passivo)', nameEn: 'Defense (passive)',
+      descPt: 'Passiva: +1 na CA enquanto estiver usando armadura.',
+      descEn: 'Passive: +1 AC while wearing armor.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_dueling: {
+    actions: [{
+      id: 'ranger_style_dueling_passive',
+      namePt: 'Duelo (passivo)', nameEn: 'Dueling (passive)',
+      descPt: 'Passiva: +2 de dano com arma corpo a corpo empunhada em uma mao.',
+      descEn: 'Passive: +2 damage with one-handed melee weapon attacks.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_two_weapon: {
+    actions: [{
+      id: 'ranger_style_two_weapon_passive',
+      namePt: 'Duas Armas (passivo)', nameEn: 'Two-Weapon Fighting (passive)',
+      descPt: 'Passiva: adiciona modificador no dano do ataque com a segunda arma.',
+      descEn: 'Passive: add ability modifier to off-hand attack damage.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_thrown_weapon: {
+    actions: [{
+      id: 'ranger_style_thrown_weapon_passive',
+      namePt: 'Armas de Arremesso (passivo)', nameEn: 'Thrown Weapon Fighting (passive)',
+      descPt: 'Passiva: +1 de dano com ataques de arremesso e sacar arma de arremesso como parte do ataque.',
+      descEn: 'Passive: +1 damage with thrown attacks and draw thrown weapon as part of the attack.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  ranger_style_blind_fighting: {
+    actions: [{
+      id: 'ranger_style_blind_fighting_passive',
+      namePt: 'Combate as Cegas (passivo)', nameEn: 'Blind Fighting (passive)',
+      descPt: 'Passiva: percepcao cega em 3 metros.',
+      descEn: 'Passive: blindsight within 10 feet.',
       useType: 'at_will', activationCost: 'free',
     }],
   },
@@ -670,6 +887,85 @@ export const FEATURE_EFFECTS: Record<string, FeatureEffect> = {
   // ──────────────────────────────────────────────────────────────────────────
   // LADINO
   // ──────────────────────────────────────────────────────────────────────────
+  rogue_archetype: {
+    actions: [{
+      id: 'rogue_archetype_passive',
+      namePt: 'Arquetipo de Ladino (passivo)', nameEn: 'Rogue Archetype (passive)',
+      descPt: 'Passiva: define seu arquetipo e habilita features especificas nos niveis 3, 9, 13 e 17.',
+      descEn: 'Passive: defines your archetype and enables subclass features at levels 3, 9, 13, and 17.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  rogue_archetype_feature_9: {
+    actions: [{
+      id: 'rogue_archetype_feature_9_passive',
+      namePt: 'Feature do Arquetipo (9) (passivo)', nameEn: 'Archetype Feature (9) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 9 do ladino.',
+      descEn: 'Passive: rogue subclass milestone at level 9.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  rogue_archetype_feature_13: {
+    actions: [{
+      id: 'rogue_archetype_feature_13_passive',
+      namePt: 'Feature do Arquetipo (13) (passivo)', nameEn: 'Archetype Feature (13) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 13 do ladino.',
+      descEn: 'Passive: rogue subclass milestone at level 13.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  rogue_archetype_feature_17: {
+    actions: [{
+      id: 'rogue_archetype_feature_17_passive',
+      namePt: 'Feature do Arquetipo (17) (passivo)', nameEn: 'Archetype Feature (17) (passive)',
+      descPt: 'Passiva: marco de subclass do nivel 17 do ladino.',
+      descEn: 'Passive: rogue subclass milestone at level 17.',
+      useType: 'at_will', activationCost: 'free',
+    }],
+  },
+  // Rogue ASI markers/options are handled by derived feat rules and ASI logic.
+  rogue_asi_4: {},
+  rogue_asi_8: {},
+  rogue_asi_10: {},
+  rogue_asi_12: {},
+  rogue_asi_16: {},
+  rogue_asi_19: {},
+  rogue_asi4_dex2: {},
+  rogue_asi4_int2: {},
+  rogue_asi4_dex1int1: {},
+  rogue_asi4_feat_skulker: {},
+  rogue_asi4_feat_alert: {},
+  rogue_asi4_feat_mobile: {},
+  rogue_asi8_dex2: {},
+  rogue_asi8_int2: {},
+  rogue_asi8_dex1int1: {},
+  rogue_asi8_feat_skulker: {},
+  rogue_asi8_feat_lucky: {},
+  rogue_asi8_feat_resilient: {},
+  rogue_asi10_dex2: {},
+  rogue_asi10_int2: {},
+  rogue_asi10_dex1int1: {},
+  rogue_asi10_feat_alert: {},
+  rogue_asi10_feat_mobile: {},
+  rogue_asi10_feat_lucky: {},
+  rogue_asi12_dex2: {},
+  rogue_asi12_int2: {},
+  rogue_asi12_dex1int1: {},
+  rogue_asi12_feat_skulker: {},
+  rogue_asi12_feat_lucky: {},
+  rogue_asi12_feat_resilient: {},
+  rogue_asi16_dex2: {},
+  rogue_asi16_int2: {},
+  rogue_asi16_dex1int1: {},
+  rogue_asi16_feat_alert: {},
+  rogue_asi16_feat_lucky: {},
+  rogue_asi16_feat_mobile: {},
+  rogue_asi19_dex2: {},
+  rogue_asi19_int2: {},
+  rogue_asi19_dex1int1: {},
+  rogue_asi19_feat_alert: {},
+  rogue_asi19_feat_lucky: {},
+  rogue_asi19_feat_resilient: {},
   rogue_arch_arcane_trickster: {
     // Arcane Trickster recebe Mage Hand como parte central do arquétipo.
     grantedSpells: ['mage-hand'],
@@ -1405,6 +1701,105 @@ function getDerivedFeatureEffects(traitIds: string[]): FeatureEffect[] {
         }],
       });
     }
+  }
+
+  // Feats comuns em opcoes de ASI de Ranger/Rogue modelados por padrao de ID.
+  // Isso evita mapear manualmente cada nivel (4/8/10/12/16/19).
+  if (traitIds.some((id) => id.includes('_feat_lucky'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_lucky',
+        namePt: 'Talento: Sortudo', nameEn: 'Feat: Lucky',
+        descPt: '3 usos por descanso longo para rerrolar d20 de ataque, teste ou resistencia.',
+        descEn: '3 uses per long rest to reroll an attack roll, ability check, or saving throw d20.',
+        useType: 'long_rest', maxUses: 3, activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_mobile'))) {
+    derived.push({
+      speedBonus: 10,
+      actions: [{
+        id: 'feat_mobile',
+        namePt: 'Talento: Movel', nameEn: 'Feat: Mobile',
+        descPt: 'Passiva: +3m de deslocamento e mobilidade aprimorada.',
+        descEn: 'Passive: +10 ft speed and improved mobility.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_sharpshooter'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_sharpshooter',
+        namePt: 'Talento: Atirador de Elite', nameEn: 'Feat: Sharpshooter',
+        descPt: 'Passiva: ignora cobertura parcial e permite troca -5 para acertar por +10 de dano a distancia.',
+        descEn: 'Passive: ignore partial cover and allow -5 to hit for +10 damage on ranged attacks.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_crossbow'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_crossbow_expert',
+        namePt: 'Talento: Especialista em Besta', nameEn: 'Feat: Crossbow Expert',
+        descPt: 'Passiva: remove carregamento de bestas, evita desvantagem adjacente e libera ataque bonus com besta de mao.',
+        descEn: 'Passive: ignore crossbow loading, avoid adjacent disadvantage, and gain bonus hand crossbow attack.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_resilient'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_resilient',
+        namePt: 'Talento: Resiliente', nameEn: 'Feat: Resilient',
+        descPt: 'Passiva: proficiencia em uma resistencia escolhida e maior consistencia defensiva.',
+        descEn: 'Passive: gain proficiency in one chosen saving throw and improve defensive consistency.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_tough'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_tough',
+        namePt: 'Talento: Resistente', nameEn: 'Feat: Tough',
+        descPt: 'Passiva: aumenta consideravelmente seus pontos de vida maximos.',
+        descEn: 'Passive: significantly increases your maximum hit points.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_skulker'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_skulker',
+        namePt: 'Talento: Espreitador', nameEn: 'Feat: Skulker',
+        descPt: 'Passiva: melhores opcoes de furtividade em pouca luz e apos ataques a distancia.',
+        descEn: 'Passive: improved stealth options in dim light and after ranged attacks.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
+  }
+
+  if (traitIds.some((id) => id.includes('_feat_alert'))) {
+    derived.push({
+      actions: [{
+        id: 'feat_alert',
+        namePt: 'Talento: Alerta', nameEn: 'Feat: Alert',
+        descPt: 'Passiva: +5 iniciativa, nao pode ser surpreendido enquanto consciente.',
+        descEn: 'Passive: +5 initiative, cannot be surprised while conscious.',
+        useType: 'at_will', activationCost: 'free',
+      }],
+    });
   }
 
   return derived;

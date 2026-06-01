@@ -10,7 +10,10 @@ import {
 import { getFeaturesForLevel, getOptionNameMapForClass, CLASS_FEATURES, ClassFeature } from '../data/classFeatures';
 import { SKILLS, CLASS_SKILL_OPTIONS } from '../data/skills';
 import { useI18n } from '../lib/i18n';
+import { detectPendingChoices } from '../lib/pendingChoices';
 import { localizeFeatureName, localizeFeatureDesc } from '../lib/translations';
+
+const MAX_CHARACTER_LEVEL = 20;
 
 interface Props {
   visible: boolean;
@@ -35,44 +38,67 @@ export default function LevelUpModal({
   onCancel,
   onConfirm,
 }: Props) {
-  const newLevel = currentLevel + 1;
-  const features = useMemo(() => getFeaturesForLevel(classId, newLevel), [classId, newLevel]);
+  const isMaxLevel = currentLevel >= MAX_CHARACTER_LEVEL;
+  const newLevel = isMaxLevel ? MAX_CHARACTER_LEVEL : currentLevel + 1;
+  const features = useMemo(
+    () => (isMaxLevel ? [] : getFeaturesForLevel(classId, newLevel)),
+    [classId, newLevel, isMaxLevel],
+  );
   const { language } = useI18n();
 
   // choices: featureId -> selectedOptionId
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [skillChoices, setSkillChoices] = useState<Record<string, string[]>>({});
 
-  const choiceFeatures = useMemo(() => features.filter((f) => f.type === 'choice'), [features]);
   const autoFeatures = useMemo(() => features.filter((f) => f.type === 'auto'), [features]);
-  const classFeatureList = useMemo(
-    () => (CLASS_FEATURES[classId] ?? []).flatMap((lf) => lf.features),
-    [classId],
+  const pendingChoices = useMemo(
+    () => detectPendingChoices({
+      className: classId,
+      level: currentLevel,
+      traits: existingTraits,
+      featureChoices: existingSkillChoices,
+    }, newLevel),
+    [classId, currentLevel, existingTraits, existingSkillChoices, newLevel],
   );
-  const pendingSkillPickFeatures = useMemo(() => {
-    const existingSet = new Set(existingTraits);
-    const currentAutoIds = new Set(autoFeatures.map((f) => f.id));
-    return classFeatureList.filter((f) => {
-      if (f.type !== 'auto') return false;
-      if (!(f.pickCount && f.pickCount > 0)) return false;
-      if (!existingSet.has(f.id)) return false;
-      if (currentAutoIds.has(f.id)) return false;
-      const alreadyChosen = existingSkillChoices[f.id]?.length ?? 0;
-      return alreadyChosen < (f.pickCount ?? 1);
-    });
-  }, [classFeatureList, existingTraits, autoFeatures, existingSkillChoices]);
+  const unlockedChoiceFeatures = useMemo(() => {
+    const byId = new Map<string, ClassFeature>();
+    pendingChoices
+      .filter((item) => item.kind === 'choice')
+      .forEach((item) => byId.set(item.feature.id, item.feature));
+    return [...byId.values()];
+  }, [pendingChoices]);
+  const unresolvedSkillPickFeatures = useMemo(() => {
+    const byId = new Map<string, ClassFeature>();
+    pendingChoices
+      .filter((item) => item.kind === 'skill_pick')
+      .forEach((item) => byId.set(item.feature.id, item.feature));
+    return [...byId.values()];
+  }, [pendingChoices]);
   const skillPickFeatures = useMemo(
-    () => {
-      const fromCurrentLevel = autoFeatures.filter((f) => f.pickCount && f.pickCount > 0);
-      const byId = new Map<string, ClassFeature>();
-      fromCurrentLevel.forEach((f) => byId.set(f.id, f));
-      pendingSkillPickFeatures.forEach((f) => byId.set(f.id, f));
-      return [...byId.values()];
-    },
-    [autoFeatures, pendingSkillPickFeatures],
+    () => unresolvedSkillPickFeatures,
+    [unresolvedSkillPickFeatures],
+  );
+  const featureLevelById = useMemo(() => {
+    const map = new Map<string, number>();
+    (CLASS_FEATURES[classId] ?? []).forEach((lf) => {
+      lf.features.forEach((f) => {
+        if (!map.has(f.id)) map.set(f.id, lf.level);
+      });
+    });
+    return map;
+  }, [classId]);
+  const pendingChoiceFeatureIds = useMemo(
+    () => new Set(unlockedChoiceFeatures.filter((f) => (featureLevelById.get(f.id) ?? newLevel) <= currentLevel).map((f) => f.id)),
+    [unlockedChoiceFeatures, featureLevelById, currentLevel, newLevel],
+  );
+  const pendingSkillPickFeatureIds = useMemo(
+    () => new Set(skillPickFeatures.filter((f) => (featureLevelById.get(f.id) ?? newLevel) <= currentLevel).map((f) => f.id)),
+    [skillPickFeatures, featureLevelById, currentLevel, newLevel],
   );
 
-  const allChoicesMade = choiceFeatures.every((f) => choices[f.id]) && skillPickFeatures.every((f) => (skillChoices[f.id]?.length ?? 0) >= (f.pickCount ?? 1));
+  const allChoicesMade = unlockedChoiceFeatures.every((f) => choices[f.id])
+    && skillPickFeatures.every((f) => (skillChoices[f.id]?.length ?? 0) >= (f.pickCount ?? 1));
+  const canConfirm = !isMaxLevel && allChoicesMade;
 
   useEffect(() => {
     if (!visible) return;
@@ -100,9 +126,9 @@ export default function LevelUpModal({
   // by a sibling choice at this same level OR by a previous level-up
   const takenNamesByFeatureId = useMemo(() => {
     const result: Record<string, Set<string>> = {};
-    choiceFeatures.forEach((f) => {
+    unlockedChoiceFeatures.forEach((f) => {
       const taken = new Set<string>(previouslyChosenNames);
-      choiceFeatures.forEach((other) => {
+      unlockedChoiceFeatures.forEach((other) => {
         if (other.id !== f.id && choices[other.id]) {
           const selectedOpt = other.options?.find((o) => o.id === choices[other.id]);
           if (selectedOpt) taken.add(selectedOpt.name);
@@ -111,7 +137,7 @@ export default function LevelUpModal({
       result[f.id] = taken;
     });
     return result;
-  }, [choices, choiceFeatures, previouslyChosenNames]);
+  }, [choices, unlockedChoiceFeatures, previouslyChosenNames]);
 
   const takenSkillsByFeatureId = useMemo(() => {
     const result: Record<string, Set<string>> = {};
@@ -132,7 +158,7 @@ export default function LevelUpModal({
     // Collect all trait IDs: auto features + chosen options
     const traitIds: string[] = [];
     autoFeatures.forEach((f) => traitIds.push(f.id));
-    choiceFeatures.forEach((f) => {
+    unlockedChoiceFeatures.forEach((f) => {
       if (choices[f.id]) traitIds.push(choices[f.id]);
     });
     setChoices({});
@@ -144,7 +170,7 @@ export default function LevelUpModal({
     onCancel();
   };
 
-  const hasFeatures = features.length > 0;
+  const hasFeatures = features.length > 0 || unlockedChoiceFeatures.length > 0 || skillPickFeatures.length > 0;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -159,6 +185,16 @@ export default function LevelUpModal({
               <Text style={styles.levelHighlight}>Nível {newLevel}</Text>
             </Text>
 
+            {isMaxLevel && (
+              <View style={styles.section}>
+                <Text style={styles.noFeatures}>
+                  {language === 'en'
+                    ? `Maximum level reached (${MAX_CHARACTER_LEVEL}).`
+                    : `Nível máximo atingido (${MAX_CHARACTER_LEVEL}).`}
+                </Text>
+              </View>
+            )}
+
             {/* Auto features */}
             {autoFeatures.length > 0 && (
               <View style={styles.section}>
@@ -170,9 +206,20 @@ export default function LevelUpModal({
             )}
 
             {/* Choice features */}
-            {choiceFeatures.map((f) => (
+            {unlockedChoiceFeatures.map((f) => (
               <View key={f.id} style={styles.section}>
-                <Text style={styles.sectionTitle}>🎯 {localizeFeatureName(f.id, f.name, language)}</Text>
+                <View style={styles.sectionTitleRow}>
+                  <Text style={styles.sectionTitle}>🎯 {localizeFeatureName(f.id, f.name, language)}</Text>
+                  {pendingChoiceFeatureIds.has(f.id) ? (
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>{language === 'en' ? 'PENDING' : 'PENDENTE'}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.currentBadge}>
+                      <Text style={styles.currentBadgeText}>{language === 'en' ? 'NEW' : 'NOVO'}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.choiceDesc}>{f.description}</Text>
                 {f.options?.map((opt) => {
                   const selected = choices[f.id] === opt.id;
@@ -226,7 +273,18 @@ export default function LevelUpModal({
                     : SKILLS.map((s) => s.id)));
               return (
                 <View key={f.id} style={styles.section}>
-                  <Text style={styles.sectionTitle}>🧠 {localizeFeatureName(f.id, f.name, language)}</Text>
+                  <View style={styles.sectionTitleRow}>
+                    <Text style={styles.sectionTitle}>🧠 {localizeFeatureName(f.id, f.name, language)}</Text>
+                    {pendingSkillPickFeatureIds.has(f.id) ? (
+                      <View style={styles.pendingBadge}>
+                        <Text style={styles.pendingBadgeText}>{language === 'en' ? 'PENDING' : 'PENDENTE'}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.currentBadge}>
+                        <Text style={styles.currentBadgeText}>{language === 'en' ? 'NEW' : 'NOVO'}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.choiceDesc}>{localizeFeatureDesc(f.id, f.description, language)}</Text>
                   <Text style={styles.skillHint}>
                     {f.pickType === 'expertise'
@@ -312,12 +370,14 @@ export default function LevelUpModal({
               <Text style={styles.cancelText}>Cancelar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmBtn, !allChoicesMade && styles.confirmBtnDisabled]}
-              onPress={allChoicesMade ? handleConfirm : undefined}
-              activeOpacity={allChoicesMade ? 0.8 : 1}
+              style={[styles.confirmBtn, !canConfirm && styles.confirmBtnDisabled]}
+              onPress={canConfirm ? handleConfirm : undefined}
+              activeOpacity={canConfirm ? 0.8 : 1}
             >
               <Text style={styles.confirmText}>
-                {allChoicesMade
+                {isMaxLevel
+                  ? (language === 'en' ? 'Maximum level reached' : 'Nível máximo atingido')
+                  : canConfirm
                   ? `Subir para Nível ${newLevel} 🎉`
                   : `Faça todas as escolhas`}
               </Text>
@@ -385,13 +445,48 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 16,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
   sectionTitle: {
     fontSize: 13,
     fontWeight: 'bold',
     color: '#7c3aed',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 8,
+    flex: 1,
+  },
+  pendingBadge: {
+    backgroundColor: '#f59e0b22',
+    borderWidth: 1,
+    borderColor: '#f59e0b88',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  pendingBadgeText: {
+    color: '#f59e0b',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.6,
+  },
+  currentBadge: {
+    backgroundColor: '#50d08022',
+    borderWidth: 1,
+    borderColor: '#50d08088',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  currentBadgeText: {
+    color: '#50d080',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.6,
   },
   featureCard: {
     backgroundColor: '#16213e',

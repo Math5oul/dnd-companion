@@ -88,7 +88,9 @@ src/
     ├── character.ts
     ├── combatAction.ts           # CombatAction, CombatModifier, MetamagicOption, AdvDis
     ├── equipment.ts
+│   ├── mapContract.ts            # Builder do contrato de integração com mapa (v1)
     └── featureEffect.ts
+│   ├── pendingChoices.ts         # Detector centralizado de pendências de escolhas
 
 supabase/
 └── schema.sql
@@ -98,12 +100,17 @@ supabase/
 
 ## Pré-requisitos
 
-- **Node.js** 18+
+│   ├── tabStore.ts
+│   └── turnStore.ts              # Estado de turno/rodada e recursos por turno
 - **npm** 9+
 - Conta no [Supabase](https://supabase.com) (plano gratuito é suficiente)
 - **Expo Go** no celular — opcional
 
----
+│   ├── featureEffect.ts
+│   └── mapContract.ts            # Tipos do bundle de integração com mapa
+
+docs/
+└── map-contract-v1.md            # Contrato técnico v1 (snapshot de ficha/turno/ações)
 
 ## Configuração e execução
 
@@ -205,6 +212,8 @@ vercel dist --prod
 - ✅ **ASI Inline Editor** — distribui pontos de atributo diretamente na ficha
 - ✅ **Seleção de Perícias** por feature (Primal Knowledge, Expertise de Bardo/Ladino)
 - ✅ Invocações Eldritch, Metamagias selecionáveis, Fighting Styles
+- ✅ Detector centralizado de pendências de escolhas (classe, ASI e skill picks)
+- ✅ Guardrail de confirmação de level up para bloquear escolhas obrigatórias não resolvidas
 
 ### Equipamentos e Inventário
 - ✅ Duas gavetas: ⚔️ Equipamentos (equipados) e 🎒 Inventário (não equipados + consumíveis)
@@ -213,6 +222,8 @@ vercel dist --prod
 - ✅ Peso de cada item; carga atual vs. capacidade (STR × 15) com cor dinâmica
 - ✅ 13 tipos de dano como picklist, traduzidos PT/EN
 - ✅ Bônus de AC e atributos aplicados automaticamente ao equipar
+- ✅ Criação/edição de ataque com flag explícita de arremesso (`isThrown`)
+- ✅ Estilo Armas de Arremesso aplicado no combate (+1 dano) com badge visual no card
 
 ### Perícias
 - ✅ 18 perícias com rolagem integrada (d20 + modificador)
@@ -290,6 +301,13 @@ Execute `supabase/schema.sql` para criar ou migrar.
 ---
 
 ## Status de Implementação e Backlog
+
+### Estado Atual (Jun/2026)
+
+- Ficha de personagem consolidada com fluxo de level up, pendências e combate validados.
+- Cobertura de efeitos de Ranger e Rogue fechada no mapeamento estático por ID.
+- Build web validado com `npx expo export --platform web`.
+- Contrato de integração com mapa v1 pronto (tipos + builder + métodos no store), mas o app de mapa ainda não está em implementação.
 
 ### Relatórios de cobertura
 

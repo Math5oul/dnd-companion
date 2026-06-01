@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import type { Character, AbilityName } from '../types/character';
 import { SKILLS, getProficiencyBonus } from '../data/skills';
 import { getClassById } from '../data/classes';
+import { CLASS_FEATURES } from '../data/classFeatures';
 
 function getModifier(score: number) {
   return Math.floor((score - 10) / 2);
@@ -46,6 +47,22 @@ export default function ChecksPanel({ char, language, themeColors: c, activeTrai
   const prof = getProficiencyBonus(char.level);
   const cls = getClassById(char.className);
   const rageActive = activeTraitEffects.has('rage');
+
+  const skillProfSet = new Set<string>(char.skillProficiencies ?? []);
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill') skillProfSet.add(p.id);
+  });
+
+  const expertiseSet = new Set<string>();
+  (char.proficiencies ?? []).forEach((p) => {
+    if (p.category === 'skill' && p.level === 'expert') expertiseSet.add(p.id);
+  });
+  const classFeatures = (CLASS_FEATURES[char.className] ?? []).flatMap((lf) => lf.features);
+  classFeatures.forEach((f) => {
+    if (f.pickType !== 'expertise') return;
+    const selected = (char.featureChoices ?? {})[f.id] ?? [];
+    selected.forEach((sid) => expertiseSet.add(sid));
+  });
 
   const saveProfKeys = new Set<AbilityName>(
     (cls?.savingThrowsEn ?? []).map((s) => EN_TO_KEY[s]).filter(Boolean) as AbilityName[]
@@ -137,8 +154,8 @@ export default function ChecksPanel({ char, language, themeColors: c, activeTrai
 
             {/* Skills of this ability */}
             {skills.map((sk) => {
-              const isProf = (char.skillProficiencies ?? []).includes(sk.id);
-              const isExpert = false; // expertise tracked via double proficiency in future
+              const isProf = skillProfSet.has(sk.id);
+              const isExpert = expertiseSet.has(sk.id);
               const bonus = mod + (isExpert ? prof * 2 : isProf ? prof : 0);
               const rid = `skill_${sk.id}`;
               const result = results[rid];

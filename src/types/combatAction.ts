@@ -63,7 +63,7 @@ export interface CombatAction {
   actionCost: ActionCost;
 
   /** Tags para filtros e lógica de modificadores */
-  tags: Array<'melee' | 'ranged' | 'magical' | 'str' | 'dex' | 'healing' | 'finesse' | 'versatile'>;
+  tags: Array<'melee' | 'ranged' | 'magical' | 'str' | 'dex' | 'healing' | 'finesse' | 'versatile' | 'thrown'>;
 
   // ── Ataque ──────────────────────────────────────────────
   /** Bônus total na jogada de ataque (sem ADV/DIS) */

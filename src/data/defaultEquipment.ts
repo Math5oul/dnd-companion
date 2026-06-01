@@ -26,8 +26,8 @@ export interface CatalogEntry {
 }
 
 // Helpers
-const a = (id: string, name: string, bonus: number, dmg: string, dmgType: string, range: string): EquipmentAttack =>
-  ({ id, name, attackBonus: bonus, damage: dmg, damageType: dmgType, range });
+const a = (id: string, name: string, bonus: number, dmg: string, dmgType: string, range: string, isThrown = false): EquipmentAttack =>
+  ({ id, name, attackBonus: bonus, damage: dmg, damageType: dmgType, range, ...(isThrown ? { isThrown: true } : {}) });
 
 export const EQUIPMENT_CATALOG: CatalogEntry[] = [
 
@@ -42,7 +42,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     bonuses: [],
     traitsEn: ['Finesse — use STR or DEX modifier', 'Light — can dual wield', 'Thrown — range 20/60 ft'],
     traitsPt: ['Finesse — use mod de FOR ou DES', 'Leve — pode usar com duas armas', 'Arremessável — alcance 20/60 ft'],
-    attacks: [a('atk1', 'Stab / Estocada', 0, '1d4', 'piercing', '5 ft / 20-60 ft')],
+    attacks: [a('atk1', 'Stab / Estocada', 0, '1d4', 'piercing', '5 ft / 20-60 ft', true)],
   },
   {
     nameEn: 'Club', namePt: 'Clava', type: 'weapon', goldValue: 0, weight: 2,
@@ -62,7 +62,7 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     bonuses: [],
     traitsEn: ['Light — can dual wield', 'Thrown — range 20/60 ft'],
     traitsPt: ['Leve — pode usar com duas armas', 'Arremessável — alcance 20/60 ft'],
-    attacks: [a('atk1', 'Chop / Corte', 0, '1d6', 'slashing', '5 ft / 20-60 ft')],
+    attacks: [a('atk1', 'Chop / Corte', 0, '1d6', 'slashing', '5 ft / 20-60 ft', true)],
   },
   {
     nameEn: 'Javelin', namePt: 'Dardo', type: 'weapon', goldValue: 1, weight: 2,
@@ -72,7 +72,30 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     bonuses: [],
     traitsEn: ['Thrown — range 30/120 ft'],
     traitsPt: ['Arremessável — alcance 30/120 ft'],
-    attacks: [a('atk1', 'Throw / Arremessar', 0, '1d6', 'piercing', '30/120 ft')],
+    attacks: [a('atk1', 'Throw / Arremessar', 0, '1d6', 'piercing', '30/120 ft', true)],
+  },
+  {
+    nameEn: 'Spear', namePt: 'Lança', type: 'weapon', goldValue: 1, weight: 3,
+    weaponCategory: 'simple', weaponHands: 'one',
+    descEn: 'Versatile, thrown (20/60 ft). Edit attack bonus to add proficiency + STR mod.',
+    descPt: 'Versátil, arremessável (20/60 ft). Edite o bônus para incluir proficiência + mod de FOR.',
+    bonuses: [],
+    traitsEn: ['Versatile — deals 1d8 when wielded two-handed', 'Thrown — range 20/60 ft'],
+    traitsPt: ['Versátil — causa 1d8 com duas mãos', 'Arremessável — alcance 20/60 ft'],
+    attacks: [
+      a('atk1', 'Thrust / Perfurar', 0, '1d6', 'piercing', '5 ft / 20-60 ft', true),
+      a('atk2', 'Thrust 2H / Perfurar 2M', 0, '1d8', 'piercing', '5 ft'),
+    ],
+  },
+  {
+    nameEn: 'Light Hammer', namePt: 'Martelo Leve', type: 'weapon', goldValue: 2, weight: 2,
+    weaponCategory: 'simple', weaponHands: 'one',
+    descEn: 'Light, thrown (20/60 ft). Edit attack bonus to add proficiency + STR mod.',
+    descPt: 'Leve, arremessável (20/60 ft). Edite o bônus para incluir proficiência + mod de FOR.',
+    bonuses: [],
+    traitsEn: ['Light — can dual wield', 'Thrown — range 20/60 ft'],
+    traitsPt: ['Leve — pode usar com duas armas', 'Arremessável — alcance 20/60 ft'],
+    attacks: [a('atk1', 'Hammer Toss / Arremesso', 0, '1d4', 'bludgeoning', '5 ft / 20-60 ft', true)],
   },
   {
     nameEn: 'Quarterstaff', namePt: 'Bordão', type: 'weapon', goldValue: 0, weight: 4,    weaponCategory: 'simple', weaponHands: 'one',    descEn: 'Versatile (1d8 two-handed). Edit attack bonus to add proficiency + STR mod.',
@@ -141,6 +164,19 @@ export const EQUIPMENT_CATALOG: CatalogEntry[] = [
     traitsEn: ['Finesse — use STR or DEX modifier'],
     traitsPt: ['Finesse — use mod de FOR ou DES'],
     attacks: [a('atk1', 'Thrust / Estocada', 0, '1d8', 'piercing', '5 ft')],
+  },
+  {
+    nameEn: 'Trident', namePt: 'Tridente', type: 'weapon', goldValue: 5, weight: 4,
+    weaponCategory: 'martial', weaponHands: 'one',
+    descEn: 'Versatile, thrown (20/60 ft). Edit attack bonus to add proficiency + STR mod.',
+    descPt: 'Versátil, arremessável (20/60 ft). Edite o bônus para incluir proficiência + mod de FOR.',
+    bonuses: [],
+    traitsEn: ['Versatile — deals 1d8 when wielded two-handed', 'Thrown — range 20/60 ft'],
+    traitsPt: ['Versátil — causa 1d8 com duas mãos', 'Arremessável — alcance 20/60 ft'],
+    attacks: [
+      a('atk1', 'Prong Strike / Estocada', 0, '1d6', 'piercing', '5 ft / 20-60 ft', true),
+      a('atk2', 'Prong Strike 2H / Estocada 2M', 0, '1d8', 'piercing', '5 ft'),
+    ],
   },
   {
     nameEn: 'Battleaxe', namePt: 'Machado de Batalha', type: 'weapon', goldValue: 10, weight: 4,
