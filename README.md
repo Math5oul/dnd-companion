@@ -307,7 +307,11 @@ Execute `supabase/schema.sql` para criar ou migrar.
 - Ficha de personagem consolidada com fluxo de level up, pendências e combate validados.
 - Cobertura de efeitos de Ranger e Rogue fechada no mapeamento estático por ID.
 - Build web validado com `npx expo export --platform web`.
-- Contrato de integração com mapa v1 pronto (tipos + builder + métodos no store), mas o app de mapa ainda não está em implementação.
+- P0 (mapa) em progresso com status sincronizado com `docs/faltantes-mecanicas.md`:
+  - Concluído: contrato v1 (`CharacterSnapshot`, `TurnStateSnapshot`, `ActionCatalog`) + bundle no store.
+  - Parcial: deslocamento base com `x,y,z` e gasto de movimento com terreno difícil.
+  - Parcial: validação por economia de turno e recursos (ação/bônus/reação/usos).
+  - Pendente: velocidade por tipo (`walk/fly/swim/climb`), validação de alcance/LOS e emissão de eventos de domínio (`turn.started`, `movement.spent`, `action.used`, `condition.applied`).
 
 ### Relatórios de cobertura
 

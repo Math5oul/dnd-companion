@@ -18,6 +18,10 @@ export interface TurnState {
   /** Movimento em pés disponível no turno */
   movementTotal: number;
   movementUsed: number;
+  /** Posição tática atual no grid (em tiles) durante o turno */
+  position: { x: number; y: number; z?: number };
+  /** Último tipo de terreno aplicado no gasto de movimento */
+  lastMovementTerrain?: 'normal' | 'difficult';
   /** Se é o turno ativo deste personagem agora */
   isActive: boolean;
   /** Resultado da rolagem de iniciativa (d20 + bônus) ao iniciar combate */

@@ -7,9 +7,10 @@ import { useTurnStore } from '../store/turnStore';
 import { useCharacterStore } from '../store/characterStore';
 import { buildCombatActions } from '../lib/buildCombatActions';
 import { rollDamage } from '../lib/dice';
-import { translateDamageType, convertSpeed } from '../lib/units';
+import { translateDamageType, translateEquipRange, convertSpeed } from '../lib/units';
 import SpellsPanel from './SpellsPanel';
 import CombatManeuvers from './CombatManeuvers';
+import CombatActionCard from './CombatActionCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -21,8 +22,29 @@ const COST_CFG = {
   free:     { symbol: 'L',  icon: '✓',  color: '#5c8a5c' },
 } as const;
 
+const ACTION_COST_TAG: Record<CombatAction['actionCost'], { pt: string; en: string; color: string }> = {
+  action: { pt: 'Ação', en: 'Action', color: '#e07b39' },
+  bonus: { pt: 'Ação Bônus', en: 'Bonus Action', color: '#3da1c8' },
+  reaction: { pt: 'Reação', en: 'Reaction', color: '#9c5de0' },
+  free: { pt: 'Livre', en: 'Free', color: '#5c8a5c' },
+};
+
 function rollD20(): number {
   return Math.floor(Math.random() * 20) + 1;
+}
+
+type RollMode = 'normal' | 'adv' | 'dis';
+
+function rollToHit(mode: RollMode): { roll: number; detail: string } {
+  if (mode === 'normal') {
+    const r = rollD20();
+    return { roll: r, detail: `d20:${r}` };
+  }
+  const a = rollD20();
+  const b = rollD20();
+  const roll = mode === 'adv' ? Math.max(a, b) : Math.min(a, b);
+  const tag = mode === 'adv' ? 'ADV' : 'DIS';
+  return { roll, detail: `${tag}:${a}/${b}->${roll}` };
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -136,6 +158,7 @@ const rr = StyleSheet.create({
 interface CardProps {
   action: CombatAction;
   language: 'pt' | 'en';
+  units: 'metric' | 'imperial';
   canUseAction: boolean;
   canUseBonus: boolean;
   canUseReaction: boolean;
@@ -154,21 +177,35 @@ interface CardProps {
   rageDmgBonus: number;
 }
 
+interface RollOutcome {
+  hit?: number;
+  hitDetail?: string;
+  dmg?: number;
+  dmgDetail?: string;
+  dmgType?: string;
+  label?: string;
+  critical?: boolean;
+}
+
 function ActionCard({
-  action, language, canUseAction, canUseBonus, canUseReaction,
+  action, language, units, canUseAction, canUseBonus, canUseReaction,
   kiPointsAvailable,
   activeTraitEffects, actionUses, themeColors: c,
   onUseAction, onUseBonusAction, onUseReaction,
   onToggle, onUseFeature, onUseCharge, onSpendKi, onCastSpell,
   rageDmgBonus,
 }: CardProps) {
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<RollOutcome | null>(null);
+  const [rollMode, setRollMode] = useState<RollMode>('normal');
+  const [modsOpen, setModsOpen] = useState(false);
 
   const cfg = COST_CFG[action.actionCost] ?? COST_CFG.action;
   const isToggle = action.isToggle ?? false;
   const effectTag = action.effectTag;
   const isEffectActive = effectTag ? activeTraitEffects.has(effectTag) : false;
   const isSpell = action.source === 'spell';
+  const canRollToHit = action.attackBonus !== undefined;
+  const actionTag = ACTION_COST_TAG[action.actionCost];
 
   const remaining = action.featureActionId
     ? (actionUses[action.featureActionId] ?? action.maxUses ?? null)
@@ -187,7 +224,7 @@ function ActionCard({
   const disabled = featureExhausted || kiExhausted || chargeExhausted || slotExhausted || (!isToggle && !resourceAvailable);
 
   const showResult = (msg: string) => {
-    setResult(msg);
+    setResult({ label: msg });
     setTimeout(() => setResult(null), 5000);
   };
 
@@ -200,6 +237,7 @@ function ActionCard({
 
   const handlePress = () => {
     if (disabled && !isEffectActive) return;
+    const out: RollOutcome = {};
 
     // ── Toggle feature ──
     if (isToggle && effectTag) {
@@ -240,21 +278,25 @@ function ActionCard({
       }
       // Spell attack roll
       if (action.isSpellAttack && action.attackBonus !== undefined) {
-        const d20 = rollD20();
+        const hitRoll = rollToHit(rollMode);
+        const d20 = hitRoll.roll;
         const hit = d20 + action.attackBonus;
         const isCrit = d20 === 20;
         const isFumble = d20 === 1;
-        if (isFumble) { showResult(`💀 ${language === 'en' ? 'Miss!' : 'Errou!'}`); return; }
-        let resultLine = `${isCrit ? '💥 CRÍTICO! ' : ''}${language === 'en' ? 'Hit' : 'Acertou'}: ${hit}`;
+        if (isFumble) { showResult(`💀 ${language === 'en' ? 'Miss!' : 'Errou!'} (${hitRoll.detail})`); return; }
+        out.hit = hit;
+        out.hitDetail = `${hitRoll.detail}${action.attackBonus >= 0 ? `+${action.attackBonus}` : action.attackBonus}`;
+        out.critical = isCrit;
         if (action.damage) {
           const dmgExpr = isCrit
             ? action.damage.replace(/(\d+)d(\d+)/gi, (_, n, d) => `${Number(n) * 2}d${d}`)
             : action.damage;
           const dmgR = rollDamage(dmgExpr);
-          const dmgType = action.damageType ? ` ${translateDamageType(action.damageType as any, language)}` : '';
-          resultLine += `  →  ${language === 'en' ? 'Dmg' : 'Dano'}: ${dmgR.total}${dmgType}`;
+          out.dmg = dmgR.total;
+          out.dmgDetail = dmgR.detail;
+          out.dmgType = action.damageType;
         }
-        showResult(resultLine);
+        setResultsAndClear(out);
       } else if (action.savingThrow) {
         // Save spell: show DC and optionally roll damage
         const dc = action.savingThrow.ability;
@@ -274,7 +316,8 @@ function ActionCard({
 
     // ── Attack ──
     consumeResource();
-    const d20 = rollD20();
+    const hitRoll = rollToHit(rollMode);
+    const d20 = hitRoll.roll;
     let totalAttack = action.attackBonus ?? 0;
     let totalDmgBonus = 0;
     let extraDice = '';
@@ -297,7 +340,13 @@ function ActionCard({
     const isFumble = d20 === 1;
 
     if (!action.damage || isFumble) {
-      showResult(`${isFumble ? '💀 Falha crítica!' : `${hit}`}  (d20:${d20}${totalAttack >= 0 ? `+${totalAttack}` : totalAttack})`);
+      if (isFumble) {
+        showResult(language === 'en' ? '💀 Critical miss!' : '💀 Falha crítica!');
+      } else {
+        out.hit = hit;
+        out.hitDetail = `${hitRoll.detail}${totalAttack >= 0 ? `+${totalAttack}` : totalAttack}`;
+        setResultsAndClear(out);
+      }
       return;
     }
 
@@ -312,9 +361,18 @@ function ActionCard({
     if (action.consumeCharge && action.equipmentId) onUseCharge(action.equipmentId);
     if (action.featureActionId && action.useType !== 'at_will') onUseFeature(action.featureActionId, action.maxUses ?? 0);
 
-    showResult(
-      `${isCrit ? '💥 CRÍTICO! ' : ''}${language === 'en' ? 'Hit' : 'Acertou'}: ${hit}  →  ${language === 'en' ? 'Dmg' : 'Dano'}: ${totalDmg}${dmgType}`
-    );
+    out.hit = hit;
+    out.hitDetail = `${hitRoll.detail}${totalAttack >= 0 ? `+${totalAttack}` : totalAttack}`;
+    out.critical = isCrit;
+    out.dmg = totalDmg;
+    out.dmgDetail = `${dmgR.detail}${totalDmgBonus ? `+${totalDmgBonus}` : ''}`;
+    out.dmgType = action.damageType;
+    setResultsAndClear(out);
+  };
+
+  const setResultsAndClear = (next: RollOutcome) => {
+    setResult(next);
+    setTimeout(() => setResult(null), 5000);
   };
 
   const name = language === 'en' ? action.nameEn : action.namePt;
@@ -335,10 +393,17 @@ function ActionCard({
       <View style={ac.topRow}>
         <Text style={ac.icon}>{action.icon}</Text>
         <Text style={[ac.name, { color: c.text }]} numberOfLines={1}>{name}</Text>
-        <View style={[ac.costBadge, { borderColor: cfg.color + '88', backgroundColor: cfg.color + '22' }]}>
-          <Text style={[ac.costText, { color: cfg.color }]}>{cfg.icon} {cfg.symbol}</Text>
+        <View style={[ac.costBadge, { borderColor: actionTag.color + '88', backgroundColor: actionTag.color + '22' }]}>
+          <Text style={[ac.costText, { color: actionTag.color }]}>{language === 'en' ? actionTag.en : actionTag.pt}</Text>
         </View>
       </View>
+      {action.source === 'weapon' && (
+        <View style={ac.weaponTag}>
+          <Text style={ac.weaponTagText}>
+            {language === 'en' ? `Weapon: ${action.sourceNameEn}` : `Arma: ${action.sourceNamePt}`}
+          </Text>
+        </View>
+      )}
 
       {/* Stats row */}
       {isSpell && (action.spellLevel ?? 0) > 0 && (
@@ -359,7 +424,47 @@ function ActionCard({
         <Text style={ac.stats}>
           {action.attackBonus !== undefined ? `+${action.attackBonus} · ` : ''}
           {action.damage ?? ''}{action.damageType ? ` ${translateDamageType(action.damageType as any, language)}` : ''}
+          {action.range ? ` · ${translateEquipRange(action.range, units, language)}` : ''}
         </Text>
+      )}
+      {action.modifiers.length > 0 && (
+        <TouchableOpacity onPress={() => setModsOpen((v) => !v)} activeOpacity={0.8} style={ac.modToggleRow}>
+          <Text style={ac.modToggleText}>
+            {modsOpen ? '▲' : '▶'} {action.modifiers.length} {language === 'en' ? 'modifier(s)' : 'modificador(es)'}
+          </Text>
+        </TouchableOpacity>
+      )}
+      {modsOpen && action.modifiers.map((mod) => (
+        <View key={mod.id} style={ac.modBadge}>
+          <Text style={ac.modText}>
+            {language === 'en' ? mod.labelEn : mod.labelPt}
+          </Text>
+        </View>
+      ))}
+      {canRollToHit && (
+        <View style={ac.rollModeRow}>
+          <TouchableOpacity
+            style={[ac.rollModeBtn, rollMode === 'normal' && ac.rollModeBtnActive]}
+            onPress={() => setRollMode('normal')}
+            activeOpacity={0.8}
+          >
+            <Text style={[ac.rollModeText, rollMode === 'normal' && ac.rollModeTextActive]}>◈</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[ac.rollModeBtn, rollMode === 'adv' && ac.rollModeBtnActive]}
+            onPress={() => setRollMode('adv')}
+            activeOpacity={0.8}
+          >
+            <Text style={[ac.rollModeText, rollMode === 'adv' && ac.rollModeTextActive]}>▲ ADV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[ac.rollModeBtn, rollMode === 'dis' && ac.rollModeBtnActive]}
+            onPress={() => setRollMode('dis')}
+            activeOpacity={0.8}
+          >
+            <Text style={[ac.rollModeText, rollMode === 'dis' && ac.rollModeTextActive]}>▼ DIS</Text>
+          </TouchableOpacity>
+        </View>
       )}
       {isSpell && !action.isSpellAttack && !action.savingThrow && action.damage && (
         <Text style={ac.stats}>
@@ -377,9 +482,13 @@ function ActionCard({
       {/* Consumable charge markers */}
       {action.consumeCharge && action.charges !== undefined && (
         <View style={ac.chargeRow}>
+          {(() => {
+            const charges = action.charges ?? 0;
+            const maxCharges = action.maxCharges ?? charges;
+            return (
           <View style={ac.pips}>
-            {Array.from({ length: action.maxCharges ?? action.charges }).map((_, i) => {
-              const isFilled = i < action.charges;
+            {Array.from({ length: maxCharges }).map((_, i) => {
+              const isFilled = i < charges;
               return (
                 <View
                   key={i}
@@ -391,6 +500,8 @@ function ActionCard({
               );
             })}
           </View>
+            );
+          })()}
         </View>
       )}
 
@@ -405,7 +516,26 @@ function ActionCard({
       {/* Result */}
       {result && (
         <View style={ac.resultBox}>
-          <Text style={[ac.resultText, { color: c.accent }]}>{result}</Text>
+          {result.label ? (
+            <Text style={[ac.resultText, { color: c.accent }]}>{result.label}</Text>
+          ) : (
+            <>
+              {result.hit !== undefined && (
+                <Text style={[ac.resultText, result.critical && { color: '#f0a500' }]}>
+                  {language === 'en' ? 'Hit' : 'Acertou'}: {result.hit}{' '}
+                  {result.critical ? '💥' : ''}
+                  {result.hitDetail ? <Text style={ac.resultDetail}> ({result.hitDetail})</Text> : null}
+                </Text>
+              )}
+              {result.dmg !== undefined && (
+                <Text style={ac.resultText}>
+                  {language === 'en' ? 'Damage' : 'Dano'}: {result.dmg}
+                  {result.dmgType ? ` ${translateDamageType(result.dmgType as any, language)}` : ''}
+                  {result.dmgDetail ? <Text style={ac.resultDetail}> ({result.dmgDetail})</Text> : null}
+                </Text>
+              )}
+            </>
+          )}
         </View>
       )}
     </TouchableOpacity>
@@ -426,6 +556,48 @@ const ac = StyleSheet.create({
   },
   costText: { fontSize: 11, fontWeight: 'bold' },
   stats: { color: '#888', fontSize: 11, marginBottom: 2 },
+  rollModeRow: { flexDirection: 'row', gap: 6, marginTop: 2, marginBottom: 2 },
+  rollModeBtn: {
+    borderWidth: 1,
+    borderColor: '#555',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#202020',
+  },
+  rollModeBtnActive: {
+    borderColor: '#c090ff',
+    backgroundColor: '#3a1f55',
+  },
+  rollModeText: { color: '#aaa', fontSize: 10, fontWeight: '700' },
+  rollModeTextActive: { color: '#f1dcff' },
+  modToggleRow: { marginTop: 4, marginBottom: 2 },
+  modToggleText: { color: '#9ccfff', fontSize: 11, fontWeight: '700' },
+  modBadge: {
+    borderWidth: 1,
+    borderColor: '#44607a',
+    backgroundColor: '#1d2732',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  modText: { color: '#a7c0d8', fontSize: 11 },
+  weaponTag: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#4f9ddf66',
+    backgroundColor: '#4f9ddf22',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
+  weaponTagText: {
+    color: '#9ccfff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   activeBadge: { fontSize: 10, fontWeight: 'bold', marginTop: 2 },
   chargeRow: { marginTop: 4, alignItems: 'flex-start' as const },
   pips: { flexDirection: 'row' as const, gap: 4 },
@@ -436,6 +608,7 @@ const ac = StyleSheet.create({
   uses: { color: '#666', fontSize: 10, marginTop: 2 },
   resultBox: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#333' },
   resultText: { fontSize: 12, fontWeight: '600' },
+  resultDetail: { color: '#9a9a9a', fontSize: 11, fontWeight: '500' },
 });
 
 // ─── ConsumableCard ───────────────────────────────────────────────────────────
@@ -568,6 +741,7 @@ export default function TurnTracker({
     ? 1 - turn.movementUsed / turn.movementTotal : 0;
   const movementStep = 5;
   const movementStepLabel = convertSpeed(movementStep, units, language);
+  const difficultStepLabel = convertSpeed(movementStep * 2, units, language);
 
   // ── Sem sessão ─────────────────────────────────────────────────────────────
   if (!isInSession) {
@@ -595,6 +769,7 @@ export default function TurnTracker({
   const cardProps = (action: CombatAction) => ({
     action,
     language,
+    units,
     canUseAction: canAct,
     canUseBonus: canBonus,
     canUseReaction: canReact,
@@ -615,21 +790,21 @@ export default function TurnTracker({
 
   const renderSection = (
     costKey: keyof typeof COST_CFG,
-    labelPt: string,
-    labelEn: string,
+    _labelPt: string,
+    _labelEn: string,
     group: CombatAction[],
   ) => {
     if (!group.length) return null;
-    const cfg = COST_CFG[costKey];
     return (
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>{cfg.icon}</Text>
-          <Text style={[styles.sectionLabel, { color: cfg.color }]}>
-            {L(labelPt, labelEn).toUpperCase()}
-          </Text>
-        </View>
-        {group.map((a) => <ActionCard key={a.id} {...cardProps(a)} />)}
+        {group.map((a) => (
+          <CombatActionCard
+            key={a.id}
+            {...cardProps(a)}
+            actionTagVariant="full"
+            showWeaponTag
+          />
+        ))}
       </View>
     );
   };
@@ -723,6 +898,16 @@ export default function TurnTracker({
                   >
                     <Text style={[styles.stepText, { color: c.text }]}>{`+${movementStepLabel}`}</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.stepBtn, movementRemaining < movementStep * 2 && styles.stepDisabled]}
+                    onPress={() => useMovement(char.id, movementStep, 'difficult')}
+                    disabled={movementRemaining < movementStep * 2}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.stepText, { color: c.text }]}>
+                      {`+${difficultStepLabel} ${L('(difícil)', '(difficult)')}`}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -757,11 +942,45 @@ export default function TurnTracker({
           );
         })()}
 
-        {/* ── Ações disponíveis ── */}
+        {/* ── Ações Livres ── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionIcon}>🎯</Text>
+          <Text style={[styles.sectionLabel, { color: c.accent, fontSize: 12 }]}>
+            {L('AÇÕES LIVRES', 'FREE ACTIONS')}
+          </Text>
+        </View>
         {renderSection('action',   'Ações',   'Actions',   actionGroup)}
         {renderSection('bonus',    'Bônus',   'Bonus',     bonusGroup)}
         {renderSection('reaction', 'Reações', 'Reactions', reactionGroup)}
         {renderSection('free',     'Livres',  'Free',      freeGroup)}
+
+        {/* ── Manobras de Combate ── */}
+        <TouchableOpacity
+          style={styles.manobraHeader}
+          onPress={() => setManobraOpen((v) => !v)}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.sectionLabel, { color: c.accent, fontSize: 12 }]}>
+            ⚔️ {L('MANOBRAS DE COMBATE', 'COMBAT MANEUVERS')}
+          </Text>
+          <Text style={{ color: c.subtext, fontSize: 12 }}>{manobraOpen ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        {manobraOpen && (
+          <CombatManeuvers
+            char={char}
+            language={language}
+            themeColors={{ ...c }}
+            activeTraitEffects={activeTraitEffects}
+            canUseAction={canAct}
+            canUseBonus={canBonus}
+            canUseReaction={canReact}
+            onConsumeAction={(cost) => {
+              if (cost === 'bonus') useBonusAction(char.id);
+              else if (cost === 'reaction') useReaction(char.id);
+              else useAction(char.id);
+            }}
+          />
+        )}
 
         {/* ── Consumíveis (Poções, etc.) ── */}
         {(() => {
@@ -823,33 +1042,6 @@ export default function TurnTracker({
           </View>
         )}
 
-        {/* ── Manobras de Combate ── */}
-        <TouchableOpacity
-          style={styles.manobraHeader}
-          onPress={() => setManobraOpen((v) => !v)}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.sectionLabel, { color: c.accent, fontSize: 12 }]}>
-            ⚔️ {L('MANOBRAS DE COMBATE', 'COMBAT MANEUVERS')}
-          </Text>
-          <Text style={{ color: c.subtext, fontSize: 12 }}>{manobraOpen ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
-        {manobraOpen && (
-          <CombatManeuvers
-            char={char}
-            language={language}
-            themeColors={{ ...c }}
-            activeTraitEffects={activeTraitEffects}
-            canUseAction={canAct}
-            canUseBonus={canBonus}
-            canUseReaction={canReact}
-            onConsumeAction={(cost) => {
-              if (cost === 'bonus') useBonusAction(char.id);
-              else if (cost === 'reaction') useReaction(char.id);
-              else useAction(char.id);
-            }}
-          />
-        )}
       </View>
 
       {/* ── Footer ── */}

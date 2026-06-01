@@ -57,6 +57,8 @@ export interface Character {
   tempHp?: number;
   /** Velocidade base em pés — inicializada da raça na criação do personagem */
   speed?: number;
+  /** Posição tática no mapa (grid em tiles), usada na integração com app de mapa */
+  position?: { x: number; y: number; z?: number } | null;
   /** IDs das perícias em que o personagem tem proficiência (legado — mantido por compatibilidade) */
   skillProficiencies?: string[];
   /** Proficiências tipadas — substitui gradualmente skillProficiencies */

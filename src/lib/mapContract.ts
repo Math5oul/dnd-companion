@@ -89,7 +89,7 @@ function toActionCatalog(char: Character): ActionCatalogItem[] {
   });
 }
 
-export function buildCharacterSnapshot(char: Character): CharacterSnapshot {
+export function buildCharacterSnapshot(char: Character, turn?: TurnState | null): CharacterSnapshot {
   const effective = computeCharacterStats(char);
   const spellSlots = Object.fromEntries(
     Object.entries(char.spellSlots ?? {}).map(([level, data]) => [
@@ -103,7 +103,7 @@ export function buildCharacterSnapshot(char: Character): CharacterSnapshot {
     name: char.name,
     className: char.className,
     level: char.level,
-    position: null,
+    position: turn?.position ?? char.position ?? null,
     resources: {
       hp: {
         current: char.hp,
@@ -174,6 +174,8 @@ export function buildTurnStateSnapshot(turn: TurnState | null | undefined): Turn
       used: turn.movementUsed,
       remaining: Math.max(0, turn.movementTotal - turn.movementUsed),
     },
+    position: turn.position,
+    lastMovementTerrain: turn.lastMovementTerrain,
     initiative: {
       total: turn.initiative,
       roll: turn.initiativeRoll,
@@ -186,7 +188,7 @@ export function buildMapContractBundle(char: Character, turn?: TurnState | null)
   return {
     version: 'v1',
     generatedAt: new Date().toISOString(),
-    character: buildCharacterSnapshot(char),
+    character: buildCharacterSnapshot(char, turn),
     turn: buildTurnStateSnapshot(turn),
     actionCatalog: toActionCatalog(char),
   };

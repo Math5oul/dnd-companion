@@ -20,6 +20,7 @@ interface Props {
   characterName: string;
   classId: string;
   currentLevel: number;
+  resolveOnly?: boolean;
   existingTraits?: string[];
   existingSkillChoices?: Record<string, string[]>;
   skillProficiencies?: string[];
@@ -32,17 +33,20 @@ export default function LevelUpModal({
   characterName,
   classId,
   currentLevel,
+  resolveOnly = false,
   existingTraits = [],
   existingSkillChoices = {},
   skillProficiencies = [],
   onCancel,
   onConfirm,
 }: Props) {
-  const isMaxLevel = currentLevel >= MAX_CHARACTER_LEVEL;
-  const newLevel = isMaxLevel ? MAX_CHARACTER_LEVEL : currentLevel + 1;
+  const isMaxLevel = !resolveOnly && currentLevel >= MAX_CHARACTER_LEVEL;
+  const targetLevel = resolveOnly
+    ? currentLevel
+    : (isMaxLevel ? MAX_CHARACTER_LEVEL : currentLevel + 1);
   const features = useMemo(
-    () => (isMaxLevel ? [] : getFeaturesForLevel(classId, newLevel)),
-    [classId, newLevel, isMaxLevel],
+    () => (resolveOnly || isMaxLevel ? [] : getFeaturesForLevel(classId, targetLevel)),
+    [classId, targetLevel, resolveOnly, isMaxLevel],
   );
   const { language } = useI18n();
 
@@ -57,8 +61,8 @@ export default function LevelUpModal({
       level: currentLevel,
       traits: existingTraits,
       featureChoices: existingSkillChoices,
-    }, newLevel),
-    [classId, currentLevel, existingTraits, existingSkillChoices, newLevel],
+    }, targetLevel),
+    [classId, currentLevel, existingTraits, existingSkillChoices, targetLevel],
   );
   const unlockedChoiceFeatures = useMemo(() => {
     const byId = new Map<string, ClassFeature>();
@@ -88,12 +92,12 @@ export default function LevelUpModal({
     return map;
   }, [classId]);
   const pendingChoiceFeatureIds = useMemo(
-    () => new Set(unlockedChoiceFeatures.filter((f) => (featureLevelById.get(f.id) ?? newLevel) <= currentLevel).map((f) => f.id)),
-    [unlockedChoiceFeatures, featureLevelById, currentLevel, newLevel],
+    () => new Set(unlockedChoiceFeatures.filter((f) => (featureLevelById.get(f.id) ?? targetLevel) <= currentLevel).map((f) => f.id)),
+    [unlockedChoiceFeatures, featureLevelById, currentLevel, targetLevel],
   );
   const pendingSkillPickFeatureIds = useMemo(
-    () => new Set(skillPickFeatures.filter((f) => (featureLevelById.get(f.id) ?? newLevel) <= currentLevel).map((f) => f.id)),
-    [skillPickFeatures, featureLevelById, currentLevel, newLevel],
+    () => new Set(skillPickFeatures.filter((f) => (featureLevelById.get(f.id) ?? targetLevel) <= currentLevel).map((f) => f.id)),
+    [skillPickFeatures, featureLevelById, currentLevel, targetLevel],
   );
 
   const allChoicesMade = unlockedChoiceFeatures.every((f) => choices[f.id])
@@ -178,11 +182,19 @@ export default function LevelUpModal({
         <View style={styles.container}>
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
             {/* Header */}
-            <Text style={styles.emoji}>⬆️</Text>
-            <Text style={styles.title}>Level Up!</Text>
+            <Text style={styles.emoji}>{resolveOnly ? '🧩' : '⬆️'}</Text>
+            <Text style={styles.title}>{resolveOnly ? (language === 'en' ? 'Resolve Pending Choices' : 'Resolver Pendências') : 'Level Up!'}</Text>
             <Text style={styles.subtitle}>
-              {characterName} está subindo para o{'\n'}
-              <Text style={styles.levelHighlight}>Nível {newLevel}</Text>
+              {resolveOnly
+                ? (language === 'en'
+                  ? `${characterName}, complete unresolved choices for your current level.`
+                  : `${characterName}, complete as escolhas pendentes do nível atual.`)
+                : (
+                  <>
+                    {characterName} está subindo para o{'\n'}
+                    <Text style={styles.levelHighlight}>Nível {targetLevel}</Text>
+                  </>
+                )}
             </Text>
 
             {isMaxLevel && (
@@ -354,14 +366,18 @@ export default function LevelUpModal({
             {!hasFeatures && (
               <View style={styles.section}>
                 <Text style={styles.noFeatures}>
-                  Nenhuma habilidade especial neste nível.{'\n'}HP e spell slots são atualizados automaticamente.
+                  {resolveOnly
+                    ? (language === 'en' ? 'No pending choices for this level.' : 'Sem pendências para este nível.')
+                    : 'Nenhuma habilidade especial neste nível.\nHP e spell slots são atualizados automaticamente.'}
                 </Text>
               </View>
             )}
 
-            <Text style={styles.hpNote}>
-              🎲 HP aumenta automaticamente ao confirmar (dado de vida + CON).
-            </Text>
+            {!resolveOnly && (
+              <Text style={styles.hpNote}>
+                🎲 HP aumenta automaticamente ao confirmar (dado de vida + CON).
+              </Text>
+            )}
           </ScrollView>
 
           {/* Buttons */}
@@ -378,8 +394,10 @@ export default function LevelUpModal({
                 {isMaxLevel
                   ? (language === 'en' ? 'Maximum level reached' : 'Nível máximo atingido')
                   : canConfirm
-                  ? `Subir para Nível ${newLevel} 🎉`
-                  : `Faça todas as escolhas`}
+                  ? (resolveOnly
+                    ? (language === 'en' ? 'Save pending choices' : 'Salvar pendências')
+                    : `Subir para Nível ${targetLevel} 🎉`)
+                  : (language === 'en' ? 'Complete all choices' : 'Faça todas as escolhas')}
               </Text>
             </TouchableOpacity>
           </View>

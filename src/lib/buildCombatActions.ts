@@ -56,6 +56,25 @@ export function buildCombatActions(char: Character): CombatAction[] {
   const traits = char.traits ?? [];
   const prof = getProficiencyBonus(char.level);
 
+  const skillLegacy = new Set(char.skillProficiencies ?? []);
+  const typedSkills = (char.proficiencies ?? []).filter((p) => p.category === 'skill');
+
+  const skillBonus = (skillId: string, ability: 'strength' | 'dexterity'): number => {
+    const abilityScore = ability === 'strength'
+      ? char.abilityScores.strength
+      : char.abilityScores.dexterity;
+    const abilityMod = getModifier(abilityScore);
+
+    const typed = typedSkills.find((p) => p.id === skillId);
+    if (typed?.level === 'expert') return abilityMod + prof * 2;
+    if (typed?.level === 'proficient') return abilityMod + prof;
+    if (skillLegacy.has(skillId)) return abilityMod + prof;
+    return abilityMod;
+  };
+
+  const stealthBonus = skillBonus('stealth', 'dexterity');
+  const athleticsBonus = skillBonus('athletics', 'strength');
+
   // ─── Detectar modificadores de traits ────────────────────────
   const modifiers: CombatModifier[] = [];
 
@@ -253,6 +272,73 @@ export function buildCombatActions(char: Character): CombatAction[] {
       });
     }
   }
+
+  // ─── Ações básicas utilitárias (após ataques de equipamento) ──────────────
+  actions.push(
+    {
+      id: 'basic_hide',
+      source: 'basic',
+      sourceNamePt: 'Básico',
+      sourceNameEn: 'Basic',
+      namePt: 'Esconder',
+      nameEn: 'Hide',
+      descPt: 'Tente se esconder. Normalmente exige teste de Furtividade (DES).',
+      descEn: 'Attempt to hide. Usually requires a Stealth (DEX) check.',
+      icon: '🙈',
+      actionCost: 'action',
+      tags: ['dex'],
+      attackBonus: stealthBonus,
+      modifiers: [],
+    },
+    {
+      id: 'basic_grapple',
+      source: 'basic',
+      sourceNamePt: 'Básico',
+      sourceNameEn: 'Basic',
+      namePt: 'Agarrar',
+      nameEn: 'Grapple',
+      descPt: 'Substitui um ataque: teste de Atletismo (FOR) contra Atletismo/Acrobacia do alvo.',
+      descEn: 'Replaces one attack: Athletics (STR) check contested by target Athletics/Acrobatics.',
+      icon: '🤼',
+      actionCost: 'action',
+      tags: ['melee', 'str'],
+      attackBonus: athleticsBonus,
+      modifiers: [],
+    },
+    {
+      id: 'basic_shove',
+      source: 'basic',
+      sourceNamePt: 'Básico',
+      sourceNameEn: 'Basic',
+      namePt: 'Empurrar',
+      nameEn: 'Shove',
+      descPt: 'Substitui um ataque: derrube o alvo ou empurre 1,5m (teste contestado).',
+      descEn: 'Replaces one attack: knock target prone or push 5 ft (contested check).',
+      icon: '🫸',
+      actionCost: 'action',
+      tags: ['melee', 'str'],
+      attackBonus: athleticsBonus,
+      modifiers: [],
+    },
+    {
+      id: 'basic_throw',
+      source: 'basic',
+      sourceNamePt: 'Básico',
+      sourceNameEn: 'Basic',
+      namePt: 'Arremessar',
+      nameEn: 'Throw',
+      descPt: 'Arremesse um objeto improvisado.',
+      descEn: 'Throw an improvised object.',
+      icon: '🪨',
+      actionCost: 'action',
+      tags: ['ranged', 'str', 'thrown'],
+      attackBonus: strMod + prof,
+      damage: '1d4',
+      damageType: 'bludgeoning',
+      range: '20/60 ft',
+      modifiers: modsFor(['ranged', 'str', 'thrown']),
+    },
+  );
 
   // ─── Ações de traits (via featureEffects) ─────────────────────
   // Import dinâmico sincronizado: usamos require para manter a função síncrona

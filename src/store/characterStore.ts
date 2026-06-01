@@ -128,6 +128,8 @@ interface CharacterStore {
   updateHp: (characterId: string, hp: number) => Promise<void>;
   toggleSpell: (characterId: string, spellId: string) => Promise<void>;
   levelUp: (characterId: string, newTraits: string[]) => Promise<void>;
+  /** Aplica escolhas pendentes de traits sem subir de nível */
+  applyPendingChoices: (characterId: string, newTraits: string[]) => Promise<void>;
   useSorceryPoint: (characterId: string) => Promise<void>;
   recoverSorceryPoints: (characterId: string) => Promise<void>;
   useKiPoint: (characterId: string, amount?: number) => Promise<void>;
@@ -165,6 +167,8 @@ interface CharacterStore {
   updateGold: (characterId: string, delta: number) => Promise<void>;
   /** Define os Pontos de Vida Temporários (usa o maior entre atual e novo) */
   updateTempHp: (characterId: string, value: number) => Promise<void>;
+  /** Atualiza a posição tática no mapa (grid x,y,z) */
+  setCharacterPosition: (characterId: string, position: { x: number; y: number; z?: number } | null) => Promise<void>;
   /** Salva a escolha de ASI para uma feature (ex: { strength: 2 }) */
   updateAsiChoice: (characterId: string, featureId: string, bonuses: Partial<Record<string, number>>) => Promise<void>;
   /** Usa uma ação de feature (decrementa usos) */
@@ -427,6 +431,27 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, spells: updated } : c
+      ),
+    }));
+  },
+
+  applyPendingChoices: async (characterId, newTraits) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    const existingTraits = char.traits ?? [];
+    const mergedTraits = Array.from(new Set([...existingTraits, ...newTraits]));
+    const mergedSpells = mergeGrantedSpells(char.spells, mergedTraits);
+    const mergedAsiChoices = mergeAutoAsiChoices(mergedTraits, char.asiChoices);
+    const patch = { traits: mergedTraits, spells: mergedSpells, asiChoices: mergedAsiChoices };
+
+    const { error } = await supabase.from('characters').update(patch).eq('id', characterId);
+    if (error) {
+      console.error('Erro ao aplicar pendências:', error.message);
+      return;
+    }
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, ...patch } : c
       ),
     }));
   },
@@ -921,6 +946,17 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
     set((s) => ({
       characters: s.characters.map((c) =>
         c.id === characterId ? { ...c, tempHp: newTempHp } : c
+      ),
+    }));
+  },
+
+  setCharacterPosition: async (characterId, position) => {
+    const char = get().characters.find((c) => c.id === characterId);
+    if (!char) return;
+    await supabase.from('characters').update({ position }).eq('id', characterId);
+    set((s) => ({
+      characters: s.characters.map((c) =>
+        c.id === characterId ? { ...c, position } : c
       ),
     }));
   },

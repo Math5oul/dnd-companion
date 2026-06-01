@@ -37,6 +37,7 @@ import CombatPanel from '../../src/components/CombatPanel';
 import TurnTracker from '../../src/components/TurnTracker';
 import SkillsChecksPanel from '../../src/components/SkillsChecksPanel';
 import SpellsPanel from '../../src/components/SpellsPanel';
+import { useTurnStore } from '../../src/store/turnStore';
 import { detectMetamagic, spellAttackBonus as calcSpellAttackBonus, spellSaveDC as calcSpellSaveDC, applyMetamagicToDamage, metamagicCost, getSpellTraitBonuses, traitBonusesForSpell, computeSpellRange } from '../../src/lib/metamagic';
 import { Equipment, EQUIPMENT_TYPE_ICONS, EQUIPMENT_TYPE_LABELS_PT, EQUIPMENT_TYPE_LABELS_EN, BONUS_TYPE_LABELS } from '../../src/types/equipment';
 import { CONDITIONS, CONDITION_MAP } from '../../src/data/conditions';
@@ -55,8 +56,9 @@ const MAX_CHARACTER_LEVEL = 20;
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { characters, loading, fetchCharacters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, useSorceryPoint, recoverSorceryPoints, useKiPoint, recoverKiPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateTempHp, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice, toggleFeature, setConcentration, addCondition, removeCondition } = useCharacterStore();
+  const { characters, loading, fetchCharacters, useSpellSlot, recoverSpellSlots, updateHp, deleteCharacter, levelUp, applyPendingChoices, useSorceryPoint, recoverSorceryPoints, useKiPoint, recoverKiPoints, convertSlotToPoints, convertPointsToSlot, shortRest, toggleSkillProficiency, addSkillProficiency, addEquipment, updateEquipment, removeEquipment, toggleEquipped, useEquipmentCharge, clearLongRestItems, activateConsumable, updateGold, updateTempHp, updateAsiChoice, useFeatureAction, resetFeatureActions, saveFeatureChoice, toggleFeature, setConcentration, addCondition, removeCondition } = useCharacterStore();
   const { openTab, closeTab } = useTabStore();
+  const { session } = useTurnStore();
   const { theme } = useSettingsStore();
   const themeColors = THEMES[theme];
   const styles = useMemo(() => makeStyles(themeColors), [theme]);
@@ -80,7 +82,7 @@ export default function CharacterSheet() {
   }, [char?.id, char?.name]);
   const [hpDelta, setHpDelta] = useState(0);
 
-  type ModalType = 'delete' | 'levelup' | 'longrest' | 'shortrest' | 'noslot' | null;
+  type ModalType = 'delete' | 'levelup' | 'resolve_pending' | 'longrest' | 'shortrest' | 'noslot' | null;
   const [modal, setModal] = useState<ModalType>(null);
   const [conditionPickerOpen, setConditionPickerOpen] = useState(false);
   const [noSlotLevel, setNoSlotLevel] = useState(0);
@@ -302,6 +304,8 @@ export default function CharacterSheet() {
     );
   }
 
+  const isInCombat = !!session && session.characterIds.includes(char.id);
+
   const race = getRaceById(char.race);
   const cls = getClassById(char.className);
   const hasReachedMaxLevel = char.level >= MAX_CHARACTER_LEVEL;
@@ -330,19 +334,12 @@ export default function CharacterSheet() {
     Alert.alert(
       language === 'en' ? 'Pending level choices' : 'Escolhas de nível pendentes',
       language === 'en'
-        ? 'You still have unresolved level choices in this character sheet. Resolve them first, or continue anyway.'
-        : 'Ainda existem escolhas de nível não resolvidas na ficha. Resolva primeiro, ou continue assim mesmo.',
+        ? 'You still have unresolved level choices in this character sheet. Resolve them before opening level up.'
+        : 'Ainda existem escolhas de nível não resolvidas na ficha. Resolva-as antes de abrir o level up.',
       [
         {
           text: language === 'en' ? 'Resolve now' : 'Resolver agora',
-          onPress: () => {
-            setTraitsOpen(true);
-            setSkillsOpen(true);
-          },
-        },
-        {
-          text: language === 'en' ? 'Continue anyway' : 'Continuar mesmo assim',
-          onPress: () => setModal('levelup'),
+          onPress: () => setModal('resolve_pending'),
         },
         {
           text: language === 'en' ? 'Cancel' : 'Cancelar',
@@ -670,41 +667,6 @@ export default function CharacterSheet() {
         <View style={styles.freeActionsDividerLine} />
       </View>
 
-      {/* ── Perícias & Testes (unified) ── */}
-      {(() => {
-        const profs = sheetSkillPool;
-        const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
-        const remainingPicks = Math.max(0, maxPicks - profs.length);
-        const profBonus = getProficiencyBonus(char.level);
-        return (
-          <>
-            <TouchableOpacity style={styles.skillsHeader} onPress={() => setSkillsOpen((v) => !v)} activeOpacity={0.8}>
-              <Text style={styles.sectionTitle}>{language === 'en' ? '🎲 Skills & Checks' : '🎲 Perícias & Testes'}</Text>
-              <View style={styles.skillsHeaderRight}>
-                {remainingPicks > 0 && (
-                  <View style={styles.skillPicksBadge}>
-                    <Text style={styles.skillPicksBadgeText}>{t.skillPicksLeft(remainingPicks)}</Text>
-                  </View>
-                )}
-                <Text style={styles.profBonusLabel}>{t.profBonusLabel(profBonus)}</Text>
-                <Text style={styles.skillDrawerToggle}>{skillsOpen ? '▲' : '▼'}</Text>
-              </View>
-            </TouchableOpacity>
-            {skillsOpen && (
-              <SkillsChecksPanel
-                char={char}
-                language={language as 'pt' | 'en'}
-                themeColors={themeColors}
-                activeTraitEffects={activeTraitEffects}
-                asiTotals={asiTotals}
-                equipBonuses={equipBonuses}
-                onAddSkillProficiency={(skillId) => addSkillProficiency(char.id, skillId)}
-              />
-            )}
-          </>
-        );
-      })()}
-
       {/* Traits / Habilidades */}
       {((char.traits?.length ?? 0) > 0 || (char.equipment ?? []).some((e) => e.equipped && e.traits.length > 0)) && (() => {
         const allFeatures = Object.values(CLASS_FEATURES).flat().flatMap((lf) => lf.features);
@@ -876,30 +838,40 @@ export default function CharacterSheet() {
         );
       })()}
 
-      {/* Magias */}
-      {cls?.spellcaster && (
-        <>
-          <TouchableOpacity
-            style={styles.drawerHeader}
-            onPress={() => setSpellsOpen((v) => !v)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.sectionTitle}>{t.spells}</Text>
-            <View style={styles.drawerHeaderRight}>
-              <Text style={styles.drawerToggleIcon}>{spellsOpen ? '▲' : '▼'}</Text>
-            </View>
-          </TouchableOpacity>
-          {spellsOpen && (
-            <SpellsPanel
-              char={char}
-              language={language as 'pt' | 'en'}
-              units={units as 'metric' | 'imperial'}
-              themeColors={themeColors}
-              onNoSlot={(level) => { setNoSlotLevel(level); setModal('noslot'); }}
-            />
-          )}
-        </>
-      )}
+      {/* ── Perícias & Testes (unified) ── */}
+      {(() => {
+        const profs = sheetSkillPool;
+        const maxPicks = CLASS_SKILL_COUNT[char.className] ?? 2;
+        const remainingPicks = Math.max(0, maxPicks - profs.length);
+        const profBonus = getProficiencyBonus(char.level);
+        return (
+          <>
+            <TouchableOpacity style={styles.skillsHeader} onPress={() => setSkillsOpen((v) => !v)} activeOpacity={0.8}>
+              <Text style={styles.sectionTitle}>{language === 'en' ? '🎲 Skills & Checks' : '🎲 Perícias & Testes'}</Text>
+              <View style={styles.skillsHeaderRight}>
+                {remainingPicks > 0 && (
+                  <View style={styles.skillPicksBadge}>
+                    <Text style={styles.skillPicksBadgeText}>{t.skillPicksLeft(remainingPicks)}</Text>
+                  </View>
+                )}
+                <Text style={styles.profBonusLabel}>{t.profBonusLabel(profBonus)}</Text>
+                <Text style={styles.skillDrawerToggle}>{skillsOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+            {skillsOpen && (
+              <SkillsChecksPanel
+                char={char}
+                language={language as 'pt' | 'en'}
+                themeColors={themeColors}
+                activeTraitEffects={activeTraitEffects}
+                asiTotals={asiTotals}
+                equipBonuses={equipBonuses}
+                onAddSkillProficiency={(skillId) => addSkillProficiency(char.id, skillId)}
+              />
+            )}
+          </>
+        );
+      })()}
 
       {/* ── Painel de Combate Unificado ── */}
       <TouchableOpacity
@@ -907,22 +879,63 @@ export default function CharacterSheet() {
         onPress={() => setCombatOpen((v) => !v)}
         activeOpacity={0.8}
       >
-        <Text style={styles.sectionTitle}>{language === 'en' ? '⚔️ Combat' : '⚔️ Combate'}</Text>
+        <Text style={styles.sectionTitle}>{language === 'en' ? '⚔️ Free Actions' : '⚔️ Ações Livres'}</Text>
         <Text style={styles.drawerToggleIcon}>{combatOpen ? '▲' : '▼'}</Text>
       </TouchableOpacity>
       {combatOpen && (
-      <CombatPanel
-        char={char}
-        language={language as 'pt' | 'en'}
-        units={units}
-        themeColors={themeColors}
-        actionUses={char.actionUses ?? {}}
-        activeTraitEffects={activeTraitEffects}
-        onToggleTraitEffect={handleToggleTraitEffect}
-        onSpendKi={(amount) => useKiPoint(char.id, amount)}
-        onUseFeatureAction={(actionId, maxUses) => useFeatureAction(char.id, actionId, maxUses)}
-        onUseCharge={(itemId) => useEquipmentCharge(char.id, itemId)}
-      />
+      <>
+        {cls?.spellcaster && (
+          <>
+            <TouchableOpacity
+              style={styles.drawerHeader}
+              onPress={() => setSpellsOpen((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sectionTitle}>{t.spells}</Text>
+              <View style={styles.drawerHeaderRight}>
+                <Text style={styles.drawerToggleIcon}>{spellsOpen ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+            {spellsOpen && (
+              isInCombat ? (
+                <Text style={styles.lockHint}>
+                  {language === 'en'
+                    ? 'Spell usage is locked here during combat. Cast from the turn tracker above.'
+                    : 'O uso de magias fica bloqueado aqui durante o combate. Conjure pelo rastreador de turno acima.'}
+                </Text>
+              ) : (
+                <SpellsPanel
+                  char={char}
+                  language={language as 'pt' | 'en'}
+                  units={units as 'metric' | 'imperial'}
+                  themeColors={themeColors}
+                  onNoSlot={(level) => { setNoSlotLevel(level); setModal('noslot'); }}
+                />
+              )
+            )}
+          </>
+        )}
+        <CombatPanel
+          char={char}
+          language={language as 'pt' | 'en'}
+          units={units}
+          themeColors={themeColors}
+          actionUses={char.actionUses ?? {}}
+          activeTraitEffects={activeTraitEffects}
+          onToggleTraitEffect={handleToggleTraitEffect}
+          onSpendKi={(amount) => useKiPoint(char.id, amount)}
+          onUseFeatureAction={(actionId, maxUses) => useFeatureAction(char.id, actionId, maxUses)}
+          onUseCharge={(itemId) => useEquipmentCharge(char.id, itemId)}
+          usageLocked={isInCombat}
+        />
+      </>
+      )}
+      {combatOpen && isInCombat && (
+        <Text style={styles.lockHint}>
+          {language === 'en'
+            ? 'Free actions are locked here during combat. Use the turn tracker above.'
+            : 'As ações livres ficam bloqueadas aqui durante o combate. Use o rastreador de turno acima.'}
+        </Text>
       )}
 
       {/* ── Equipamentos + Inventário ── */}
@@ -948,13 +961,14 @@ export default function CharacterSheet() {
 
         const renderItem = (item: Equipment) => {
           const attackResults = Object.entries(attackRolls).filter(([k]) => k.startsWith(item.id + ':'));
+          const isUnequippedGear = item.type !== 'consumable' && !item.equipped;
           return (
-            <View key={item.id} style={[styles.equipCard, !item.equipped && styles.equipCardUnequipped]}>
+            <View key={item.id} style={[styles.equipCard, isUnequippedGear && styles.equipCardUnequipped]}>
               {/* Item header */}
               <View style={styles.equipCardHeader}>
                 <Text style={styles.equipTypeIcon}>{EQUIPMENT_TYPE_ICONS[item.type]}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.equipName, !item.equipped && styles.equipNameUnequipped]}>{item.name}</Text>
+                  <Text style={[styles.equipName, isUnequippedGear && styles.equipNameUnequipped]}>{item.name}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text style={styles.equipTypeName}>{typeLabels[item.type]}</Text>
                     {(item.goldValue ?? 0) > 0 && (
@@ -982,9 +996,9 @@ export default function CharacterSheet() {
               </View>
 
               {/* Charges + Use button for consumables */}
-              {item.type === 'consumable' && item.charges !== undefined && (
+              {item.type === 'consumable' && (
                 <View style={styles.chargesRow}>
-                  {item.activated && (
+                  {item.activated && item.charges !== undefined && (
                     <View style={styles.chargePips}>
                       {Array.from({ length: item.maxCharges ?? item.charges }).map((_, i) => (
                         <View
@@ -997,8 +1011,9 @@ export default function CharacterSheet() {
                   )}
                   {!item.activated && (
                     <TouchableOpacity
-                      style={styles.useBtn}
+                      style={[styles.useBtn, isInCombat && styles.useBtnDisabled]}
                       onPress={() => {
+                        if (isInCombat) return;
                         const grantsCombatAttack = item.attacks.length > 0;
                         const grantsPersistentStats = item.bonuses.length > 0;
                         if (grantsCombatAttack || grantsPersistentStats) {
@@ -1010,6 +1025,7 @@ export default function CharacterSheet() {
                         }
                       }}
                       activeOpacity={0.7}
+                      disabled={isInCombat}
                     >
                       <Text style={styles.useBtnText}>
                         {item.attacks.length > 0
@@ -1089,6 +1105,13 @@ export default function CharacterSheet() {
 
             {inventoryOpen && (
               <View style={styles.equipBlock}>
+                {isInCombat && (
+                  <Text style={styles.lockHint}>
+                    {language === 'en'
+                      ? 'Inventory item usage is locked during combat. Use the turn tracker above.'
+                      : 'O uso de itens do inventário fica bloqueado durante o combate. Use o rastreador de turno acima.'}
+                  </Text>
+                )}
                 {inventoryItems.length === 0 && (
                   <Text style={styles.equipEmpty}>{language === 'en' ? 'Inventory is empty.' : 'Inventário vazio.'}</Text>
                 )}
@@ -1123,9 +1146,12 @@ export default function CharacterSheet() {
           )}
           <View style={styles.pendingActionsRow}>
             {hasLevelUpPending && (
-              <TouchableOpacity style={styles.pendingOpenBtn} onPress={() => setModal('levelup')}>
+              <TouchableOpacity
+                style={styles.pendingOpenBtn}
+                onPress={() => setModal('resolve_pending')}
+              >
                 <Text style={styles.pendingOpenBtnText}>
-                  {language === 'en' ? 'Open Level Up' : 'Abrir Level Up'}
+                  {language === 'en' ? 'Resolve Pending Choices' : 'Resolver Pendências'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -1224,7 +1250,8 @@ export default function CharacterSheet() {
         }}
       />
       <LevelUpModal
-        visible={modal === 'levelup' && !hasReachedMaxLevel}
+        visible={(modal === 'levelup' && !hasReachedMaxLevel) || modal === 'resolve_pending'}
+        resolveOnly={modal === 'resolve_pending'}
         characterName={char.name}
         classId={char.className}
         currentLevel={char.level}
@@ -1233,6 +1260,15 @@ export default function CharacterSheet() {
         skillProficiencies={levelUpSkillPool}
         onCancel={() => setModal(null)}
         onConfirm={async (selectedTraits, selectedSkillChoices) => {
+          if (modal === 'resolve_pending') {
+            setModal(null);
+            await applyPendingChoices(char.id, selectedTraits);
+            for (const [featureId, skillIds] of Object.entries(selectedSkillChoices)) {
+              await saveFeatureChoice(char.id, featureId, skillIds);
+            }
+            return;
+          }
+
           if (char.level >= MAX_CHARACTER_LEVEL) {
             setModal(null);
             return;
@@ -2172,6 +2208,13 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({  container: { flex: 1
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
+  },
+  lockHint: {
+    color: c.subtext,
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
   acBadge: {
     borderRadius: 10,

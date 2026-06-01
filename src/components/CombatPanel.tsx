@@ -5,6 +5,7 @@ import type { CombatAction, AdvDis, CombatModifier } from '../types/combatAction
 import { buildCombatActions } from '../lib/buildCombatActions';
 import { rollDamage } from '../lib/dice';
 import { translateDamageType, translateEquipRange } from '../lib/units';
+import CombatActionCard from './CombatActionCard';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ interface Props {
   onSpendKi?: (amount: number) => void;
   actionUses: Record<string, number>;
   activeTraitEffects: Set<string>;
+  usageLocked?: boolean;
 }
 
 // ─── Rage damage bonus by level ───────────────────────────────────────────────
@@ -71,6 +73,7 @@ export default function CombatPanel({
   char, language, units, themeColors: c,
   onUseFeatureAction, onUseCharge, onToggleTraitEffect, onSpendKi,
   actionUses, activeTraitEffects,
+  usageLocked = false,
 }: Props) {
   const actions = useMemo(() => buildCombatActions(char), [char]);
 
@@ -382,7 +385,32 @@ export default function CombatPanel({
     return (
       <View style={{ marginBottom: 4 }}>
         <Text style={s.groupTitle(c)}>{title}</Text>
-        {items.map(renderAction)}
+        {items.map((action) => (
+          <CombatActionCard
+            key={action.id}
+            action={action}
+            language={language}
+            units={units}
+            themeColors={c}
+            canUseAction
+            canUseBonus
+            canUseReaction
+            kiPointsAvailable={Number.MAX_SAFE_INTEGER}
+            activeTraitEffects={activeTraitEffects}
+            actionUses={actionUses}
+            onUseAction={() => {}}
+            onUseBonusAction={() => {}}
+            onUseReaction={() => {}}
+            onToggle={onToggleTraitEffect}
+            onUseFeature={onUseFeatureAction}
+            onUseCharge={onUseCharge}
+            onSpendKi={onSpendKi}
+            rageDmgBonus={getRageDamageBonus(char.level)}
+            actionTagVariant="compact"
+            showWeaponTag
+            forceDisabled={usageLocked}
+          />
+        ))}
       </View>
     );
   };
@@ -390,8 +418,8 @@ export default function CombatPanel({
   if (actions.length === 0) return null;
 
   return (
-    <View>
-      {renderGroup(language === 'en' ? '⚔️ Attacks' : '⚔️ Ataques', weapons)}
+    <View style={s.panel(c)}>
+      {renderGroup(language === 'en' ? '⚔️ Free Actions' : '⚔️ Ações Livres', weapons)}
       {features.length > 0 && renderGroup(language === 'en' ? '⚡ Trait Actions' : '⚡ Ações de Trait', features)}
       {consumables.length > 0 && renderGroup(language === 'en' ? '🧪 Consumables' : '🧪 Consumíveis', consumables)}
     </View>
@@ -403,6 +431,15 @@ export default function CombatPanel({
 type TC = Props['themeColors'];
 
 const s = {
+  panel: (c: TC) => ({
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: c.border,
+    marginBottom: 12,
+  } as const),
+
   card: (c: TC) => ({
     backgroundColor: c.surface,
     borderRadius: 10,

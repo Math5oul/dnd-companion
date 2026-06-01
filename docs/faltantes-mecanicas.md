@@ -126,23 +126,36 @@ Resumo atual (IDs sem mapeamento direto):
 ## Prioridade de Execução (P0, P1, P2)
 
 ### P0 (núcleo jogável com mapa)
-- Definir contrato mínimo entre companion e app de mapa:
-	- `CharacterSnapshot` (HP, AC, recursos, condições).
-	- `TurnState` (turno atual, ação/bônus/reação, movimento restante).
-	- `ActionCatalog` (ações possíveis com alcance/custo/restrição).
-- Implementar modelo de deslocamento base:
-	- posição `x,y,z`.
-	- velocidade por tipo (andar/voar/nadar/escalar).
-	- gasto de movimento por tile e terreno difícil.
-- Aplicar validação de regras críticas em runtime:
-	- bloquear ação fora de alcance.
-	- bloquear uso sem recurso disponível.
-	- bloquear ação quando economia de turno não permite.
-- Sincronizar eventos essenciais de combate:
+
+Status atualizado em 2026-06-01:
+
+- [x] Contrato mínimo companion <-> mapa definido e disponível no core:
+	- `CharacterSnapshot`.
+	- `TurnStateSnapshot`.
+	- `ActionCatalog`.
+
+- [~] Modelo de deslocamento base parcialmente concluído:
+	- [x] posição `x,y,z` em personagem/turno.
+	- [x] gasto de movimento com suporte a terreno difícil.
+	- [ ] velocidade por tipo (andar/voar/nadar/escalar) ainda pendente.
+
+- [~] Validação crítica em runtime parcialmente concluída:
+	- [x] bloqueio por recurso disponível (ação/bônus/reação/uso).
+	- [x] bloqueio por economia de turno.
+	- [ ] bloqueio por alcance/LOS no motor tático ainda pendente.
+
+- [ ] Eventos essenciais de combate ainda pendentes no contrato runtime:
 	- `turn.started`.
 	- `movement.spent`.
 	- `action.used`.
 	- `condition.applied`.
+
+Falta para fechar P0:
+
+1. Completar velocidade por tipo no estado tático (`walk/fly/swim/climb`) com consumo correto.
+2. Implementar validação de alcance/linha de visão no fluxo de execução de ações.
+3. Emitir eventos de domínio do combate para sincronização externa (mapa).
+4. Validar integração ponta a ponta do bundle v1 com um consumidor de mapa (mesmo que mock).
 
 ### P1 (consistência tática e expansão de classes)
 - Adicionar linha de visão e cobertura (meia, três-quartos, total).

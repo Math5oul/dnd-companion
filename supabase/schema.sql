@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS characters (
   "spellSlots"  JSONB NOT NULL DEFAULT '{}',
   "spells"      JSONB NOT NULL DEFAULT '[]',
   "traits"         JSONB NOT NULL DEFAULT '[]',
+  "position"       JSONB,
   "sorceryPoints"  JSONB,
   "kiPoints"       JSONB,
   "hitDiceUsed"    INTEGER NOT NULL DEFAULT 0,
@@ -62,6 +63,7 @@ ALTER TABLE characters ADD COLUMN IF NOT EXISTS "kiPoints"           JSONB;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "speed"              INTEGER NOT NULL DEFAULT 30;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "activeToggles"      JSONB   NOT NULL DEFAULT '[]';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "proficiencies"      JSONB   NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS "position"           JSONB;
 
 -- v4: combat status
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS "tempHp"                 INTEGER NOT NULL DEFAULT 0;
@@ -99,10 +101,15 @@ CREATE TABLE IF NOT EXISTS turn_states (
   "reactionsUsed"      INTEGER NOT NULL DEFAULT 0,
   "movementTotal"      INTEGER NOT NULL DEFAULT 30,
   "movementUsed"       INTEGER NOT NULL DEFAULT 0,
+  "position"           JSONB NOT NULL DEFAULT '{"x":0,"y":0,"z":0}',
+  "lastMovementTerrain" TEXT NOT NULL DEFAULT 'normal',
   "isActive"           BOOLEAN NOT NULL DEFAULT FALSE,
   "updatedAt"          TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (session_id, character_id)
 );
+
+ALTER TABLE turn_states ADD COLUMN IF NOT EXISTS "position"            JSONB NOT NULL DEFAULT '{"x":0,"y":0,"z":0}';
+ALTER TABLE turn_states ADD COLUMN IF NOT EXISTS "lastMovementTerrain" TEXT  NOT NULL DEFAULT 'normal';
 
 ALTER TABLE game_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_characters ENABLE ROW LEVEL SECURITY;

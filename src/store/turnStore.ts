@@ -29,6 +29,11 @@ function calcActionsTotal(char: Character): number {
   return 1 + extra;
 }
 
+function calcMovementCostFeet(feet: number, terrain: 'normal' | 'difficult' = 'normal'): number {
+  const base = Math.max(0, feet);
+  return terrain === 'difficult' ? base * 2 : base;
+}
+
 /** Cria o TurnState inicial para um personagem a partir das suas stats efetivas */
 function buildInitialTurn(
   char: Character,
@@ -68,6 +73,8 @@ function buildInitialTurn(
     reactionsUsed: 0,
     movementTotal: stats.speed,
     movementUsed: 0,
+    position: char.position ?? { x: 0, y: 0, z: 0 },
+    lastMovementTerrain: 'normal',
     isActive: false,
     initiative,
     initiativeRoll,
@@ -98,7 +105,9 @@ interface TurnStore {
   useBonusAction: (characterId: string) => void;
   useReaction: (characterId: string) => void;
   /** Incrementa movimento usado em `feet` pés (limitado ao total) */
-  useMovement: (characterId: string, feet: number) => void;
+  useMovement: (characterId: string, feet: number, terrain?: 'normal' | 'difficult') => boolean;
+  /** Move no grid consumindo movimento por tile (5 ft), com custo de terreno */
+  moveToPosition: (characterId: string, position: { x: number; y: number; z?: number }, terrain?: 'normal' | 'difficult') => boolean;
 
   // ── Desfazer ──
   undoAction: (characterId: string) => void;
@@ -247,18 +256,70 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
       };
     }),
 
-  useMovement: (characterId, feet) =>
-    set((s) => {
-      const t = s.turns[characterId];
-      if (!t) return s;
-      const newUsed = Math.min(t.movementTotal, t.movementUsed + feet);
-      return {
+  useMovement: (characterId, feet, terrain = 'normal') => {
+    const t = get().turns[characterId];
+    if (!t) return false;
+    const cost = calcMovementCostFeet(feet, terrain);
+    if (cost <= 0) return false;
+    if (t.movementUsed + cost > t.movementTotal) return false;
+
+    set((s) => ({
+      turns: {
+        ...s.turns,
+        [characterId]: {
+          ...t,
+          movementUsed: t.movementUsed + cost,
+          lastMovementTerrain: terrain,
+        },
+      },
+    }));
+
+    return true;
+  },
+
+  moveToPosition: (characterId, position, terrain = 'normal') => {
+    const t = get().turns[characterId];
+    if (!t) return false;
+
+    const currentZ = t.position.z ?? 0;
+    const nextZ = position.z ?? 0;
+    const distanceTiles =
+      Math.abs(position.x - t.position.x)
+      + Math.abs(position.y - t.position.y)
+      + Math.abs(nextZ - currentZ);
+
+    if (distanceTiles === 0) {
+      set((s) => ({
         turns: {
           ...s.turns,
-          [characterId]: { ...t, movementUsed: newUsed },
+          [characterId]: {
+            ...t,
+            position: { x: position.x, y: position.y, ...(position.z !== undefined ? { z: position.z } : {}) },
+            lastMovementTerrain: terrain,
+          },
         },
-      };
-    }),
+      }));
+      return true;
+    }
+
+    const feet = distanceTiles * 5;
+    const cost = calcMovementCostFeet(feet, terrain);
+    if (t.movementUsed + cost > t.movementTotal) return false;
+
+    set((s) => ({
+      turns: {
+        ...s.turns,
+        [characterId]: {
+          ...t,
+          movementUsed: t.movementUsed + cost,
+          position: { x: position.x, y: position.y, ...(position.z !== undefined ? { z: position.z } : {}) },
+          lastMovementTerrain: terrain,
+        },
+      },
+    }));
+
+    return true;
+  },
 
   // ── Desfazer ──────────────────────────────────────────────────────────────
 

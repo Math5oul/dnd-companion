@@ -66,6 +66,8 @@ export interface TurnStateSnapshot {
   bonusActions: { total: number; used: number; remaining: number };
   reactions: { total: number; used: number; remaining: number };
   movementFeet: { total: number; used: number; remaining: number };
+  position: { x: number; y: number; z?: number };
+  lastMovementTerrain?: 'normal' | 'difficult';
   initiative: { total: number; roll: number; bonus: number };
 }
 
