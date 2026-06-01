@@ -884,7 +884,7 @@ export default function CharacterSheet() {
       </TouchableOpacity>
       {combatOpen && (
       <>
-        {cls?.spellcaster && (
+        {cls?.spellcaster && (char.spells?.length ?? 0) > 0 && (
           <>
             <TouchableOpacity
               style={styles.drawerHeader}
